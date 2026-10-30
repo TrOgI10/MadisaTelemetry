@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "Staging": "loho-3ca05"
+  },
+  "targets": {
+    "loho-3ca05": {
+      "hosting": {
+        "app": [
+          "madisa-telemetry"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
