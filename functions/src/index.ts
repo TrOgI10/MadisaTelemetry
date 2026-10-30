@@ -5,7 +5,7 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // Clave secreta que compartirá el agente y la API
-const MADISA_API_KEY = "MADISA_TELEMETRY_SEC_2026_KEY";
+const MADISA_API_KEY = "api__sbJXXUA8yR3hroeLFgTrx4cg7QoIny06";
 
 export const reportTelemetry = onRequest(async (req, res) => {
   // Solo admitir peticiones POST
