@@ -3,7 +3,7 @@
 # ========================================================
 
 # 1. Configuración de rutas y archivos de log
-$telemetryDir = "C:\Projects\MadisaTelemetry\Telemetry"
+$telemetryDir = "C:\Projects\MadisaTelemetry\agent"
 if (-not (Test-Path -Path $telemetryDir)) {
     New-Item -ItemType Directory -Path $telemetryDir -Force | Out-Null
 }
