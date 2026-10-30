@@ -2,10 +2,16 @@
 # Snapshot de Telemetría del Sistema con Log de Errores
 # ========================================================
 
-# 1. Configuración de rutas y archivos de log
-$telemetryDir = "C:\Projects\MadisaTelemetry\agent"
+# 1. Configuración de rutas y archivos de log (hacia frontend/public)
+$baseProjectDir = Split-Path -Path $PSScriptRoot -Parent
+$telemetryDir   = Join-Path -Path $baseProjectDir -ChildPath "frontend\public"
+
+# Fallback si se ejecuta fuera del árbol de directorios del proyecto
 if (-not (Test-Path -Path $telemetryDir)) {
-    New-Item -ItemType Directory -Path $telemetryDir -Force | Out-Null
+    $telemetryDir = "C:\Projects\MadisaTelemetry\frontend\public"
+    if (-not (Test-Path -Path $telemetryDir)) {
+        New-Item -ItemType Directory -Path $telemetryDir -Force | Out-Null
+    }
 }
 
 $outputPath = Join-Path -Path $telemetryDir -ChildPath "snapshot.json"

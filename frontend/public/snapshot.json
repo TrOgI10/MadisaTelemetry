@@ -1,0 +1,19 @@
+﻿{
+    "timestamp":  "2026-10-30T14:26:52Z",
+    "terminal_id":  "ATM-MADISA",
+    "system":  {
+                   "cpu_usage_percent":  4,
+                   "ram_used_gb":  11.43,
+                   "ram_total_gb":  15.59,
+                   "ram_usage_percent":  73.32,
+                   "disk_c_total_gb":  475.68,
+                   "disk_c_free_gb":  336.48,
+                   "disk_c_used_gb":  139.2,
+                   "disk_c_percent_free":  70.74,
+                   "uptime_hours":  29.02,
+                   "uptime_days":  1.21,
+                   "uptime_formatted":  "1:05:00:55",
+                   "last_boot_datetime":  "2026-10-29 10:25:57",
+                   "sql_service_status":  "Running"
+               }
+}
