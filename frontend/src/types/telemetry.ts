@@ -17,6 +17,7 @@ export interface SystemMetrics {
   print_spooler_jobs?: number;
   uptime_formatted?: string;
   uptime_hours?: number;
+  uptime_human?: string;
 }
 
 export interface DatabaseMetrics {

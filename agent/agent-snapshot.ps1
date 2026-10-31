@@ -2,12 +2,12 @@
 # MADISA TELEMETRY - AGENTE TPV (PLAN SPARK)
 # ==============================================================================
 param (
-    [string]$ProjectId   = "loho-3ca05",  # Sustituir por el Project ID activo si procede
-    [string]$ClientId    = "",     # Código de cliente
-    [string]$ClientName  = "Mega Perk",    # Nombre comercial
-    [string]$Delegation  = "PALMA",          # Delegación
+    [string]$ProjectId   = "loho-3ca05",
+    [string]$ClientId    = "CLI-MADISA",
+    [string]$ClientName  = "Central Madisa",
+    [string]$Delegation  = "PALMA",
     [int]$Zone           = 1,
-    [string]$OutputDir   = "C:\Projects\MadisaTelemetry\frontend\public"
+    [string]$OutputDir   = "C:\Madisa\Telemetry"
 )
 
 $ErrorActionPreference = "SilentlyContinue"
@@ -17,11 +17,11 @@ if (-not (Test-Path $OutputDir)) {
 }
 
 try {
-    # 1. Identificador único determinista de este TPV (ej: CLI-SOLLER_WHY_TROGI_PC)
+    # 1. Identificador unico de este TPV
     $computerName = $env:COMPUTERNAME
-    $docId = ("{0}{1}" -f $ClientId, $computerName).ToUpper()
+    $docId = ("{0}_{1}" -f $ClientId, $computerName).ToUpper()
 
-    # 2. Diagnóstico del Sistema
+    # 2. Diagnostico del Sistema (CPU y RAM)
     $os = Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop
     $cpuLoad = (Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop | Measure-Object -Property LoadPercentage -Average).Average
     if ($null -eq $cpuLoad) { $cpuLoad = 0 }
@@ -31,18 +31,32 @@ try {
     $usedRamGb  = [math]::Round($totalRamGb - $freeRamGb, 2)
     $ramPercent = [math]::Round(($usedRamGb / $totalRamGb) * 100, 2)
 
-    # 3. Disco C: y Uptime
+    # 3. Disco C: y Uptime legible
     $driveC          = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'" -ErrorAction Stop
+    $diskTotalGb     = [math]::Round($driveC.Size / 1GB, 2)
+    $diskFreeGb      = [math]::Round($driveC.FreeSpace / 1GB, 2)
+    $diskUsedGb      = [math]::Round(($driveC.Size - $driveC.FreeSpace) / 1GB, 2)
     $diskPercentFree = [math]::Round(($driveC.FreeSpace / $driveC.Size) * 100, 2)
-    $uptime          = (Get-Date) - $os.LastBootUpTime
+
+    $uptime      = (Get-Date) - $os.LastBootUpTime
+    $uptimeHours = [math]::Round($uptime.TotalHours, 1)
+
+    if ($uptime.Days -gt 0) {
+        $uptimeHuman = "{0} d {1} h" -f $uptime.Days, $uptime.Hours
+    } elseif ($uptime.Hours -gt 0) {
+        $uptimeHuman = "{0} h {1} min" -f $uptime.Hours, $uptime.Minutes
+    } else {
+        $uptimeHuman = "{0} min" -f $uptime.Minutes
+    }
+
     $uptimeFormatted = "{0}:{1:D2}:{2:D2}:{3:D2}" -f [int]$uptime.Days, $uptime.Hours, $uptime.Minutes, $uptime.Seconds
 
-    # 4. Servicio SQL Server y Cola de Impresión (CIM para evitar conflictos de parámetros)
+    # 4. Servicio SQL Server y Cola de Impresion
     $sqlService = Get-Service -Name "MSSQLSERVER" -ErrorAction SilentlyContinue
     $sqlStatus  = if ($sqlService) { $sqlService.Status.ToString() } else { "NotInstalled" }
     $spoolJobs  = (Get-CimInstance -ClassName Win32_PrintJob -ErrorAction SilentlyContinue | Measure-Object).Count
 
-    # 5. Generar y guardar el archivo JSON localmente
+    # 5. Generar y guardar JSON local
     $localData = [ordered]@{
         id          = $docId
         client_id   = $ClientId
@@ -55,9 +69,15 @@ try {
             cpu_usage_percent   = [int]$cpuLoad
             ram_used_gb         = $usedRamGb
             ram_total_gb        = $totalRamGb
+            ram_usage_percent   = $ramPercent
+            disk_c_total_gb     = $diskTotalGb
+            disk_c_free_gb      = $diskFreeGb
+            disk_c_used_gb      = $diskUsedGb
             disk_c_percent_free = $diskPercentFree
             sql_service_status  = $sqlStatus
             print_spooler_jobs  = $spoolJobs
+            uptime_hours        = $uptimeHours
+            uptime_human        = $uptimeHuman
             uptime_formatted    = $uptimeFormatted
         }
     }
@@ -66,7 +86,7 @@ try {
     $localData | ConvertTo-Json -Depth 5 | Set-Content -Path $jsonPath -Encoding UTF8
     Write-Host "[1/2] JSON local guardado en: $jsonPath" -ForegroundColor Cyan
 
-    # 6. Payload formateado para la API REST de Firestore
+    # 6. Payload para la API REST de Firestore
     $firestorePayload = @{
         fields = @{
             client_id     = @{ stringValue = $ClientId }
@@ -81,9 +101,15 @@ try {
                         cpu_usage_percent   = @{ integerValue = [int]$cpuLoad }
                         ram_used_gb         = @{ doubleValue = [double]$usedRamGb }
                         ram_total_gb        = @{ doubleValue = [double]$totalRamGb }
+                        ram_usage_percent   = @{ doubleValue = [double]$ramPercent }
+                        disk_c_total_gb     = @{ doubleValue = [double]$diskTotalGb }
+                        disk_c_free_gb      = @{ doubleValue = [double]$diskFreeGb }
+                        disk_c_used_gb      = @{ doubleValue = [double]$diskUsedGb }
                         disk_c_percent_free = @{ doubleValue = [double]$diskPercentFree }
                         sql_service_status  = @{ stringValue = $sqlStatus }
                         print_spooler_jobs  = @{ integerValue = $spoolJobs }
+                        uptime_hours        = @{ doubleValue = [double]$uptimeHours }
+                        uptime_human        = @{ stringValue = $uptimeHuman }
                         uptime_formatted    = @{ stringValue = $uptimeFormatted }
                     }
                 }
@@ -91,7 +117,7 @@ try {
         }
     } | ConvertTo-Json -Depth 6
 
-    # 7. Envío PATCH al endpoint del documento exacto para sobrescribir y evitar duplicados
+    # 7. Envio PATCH a Firestore
     $apiUrl = "https://firestore.googleapis.com/v1/projects/$ProjectId/databases/(default)/documents/terminals/$docId"
 
     $webClient = New-Object System.Net.WebClient
@@ -105,5 +131,5 @@ try {
 
 } catch {
     Write-Host "[ERROR] $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "En la línea: $($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor Yellow
+    Write-Host "En la linea: $($_.InvocationInfo.ScriptLineNumber)" -ForegroundColor Yellow
 }

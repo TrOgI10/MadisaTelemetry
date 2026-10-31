@@ -33,15 +33,30 @@ const statusColor = computed(() => {
         <span class="text-xs text-zinc-400 block">CPU</span>
         <span class="font-mono text-base font-semibold text-white">{{ terminal.system.cpu_usage_percent }}%</span>
       </div>
-      <div class="bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-800">
-        <span class="text-xs text-zinc-400 block">RAM</span>
-        <span class="font-mono text-base font-semibold text-white">{{ terminal.system.ram_usage_percent }}%</span>
-        <span class="text-[10px] text-zinc-500 block">{{ terminal.system.ram_used_gb }} / {{ terminal.system.ram_total_gb }} GB</span>
+      <!-- RAM -->
+      <div class="bg-zinc-900/60 p-3 rounded-lg border border-zinc-800">
+        <span class="text-[11px] font-medium text-zinc-400 block mb-1">RAM</span>
+        <span class="font-mono text-base font-semibold text-white">
+          {{ terminal.system.ram_usage_percent ?? Math.round((terminal.system.ram_used_gb / terminal.system.ram_total_gb) * 100) }}%
+        </span>
+        <span class="text-[10px] text-zinc-500 block">
+          {{ terminal.system.ram_used_gb }} / {{ terminal.system.ram_total_gb }} GB
+        </span>
       </div>
-      <div class="bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-800">
-        <span class="text-xs text-zinc-400 block">Disco C: Libre</span>
-        <span class="font-mono text-base font-semibold text-white">{{ terminal.system.disk_c_percent_free }}%</span>
-        <span class="text-[10px] text-zinc-500 block">{{ terminal.system.disk_c_free_gb }} GB libres</span>
+      <!-- Disco C -->
+      <div class="bg-zinc-900/60 p-3 rounded-lg border border-zinc-800">
+        <span class="text-[11px] font-medium text-zinc-400 block mb-1">Disco C: Libre</span>
+        <span class="font-mono text-base font-semibold text-white">
+          {{ terminal.system.disk_c_percent_free }}%
+        </span>
+        <span class="text-[10px] text-zinc-500 block">
+          <template v-if="terminal.system.disk_c_free_gb !== undefined">
+            {{ terminal.system.disk_c_free_gb }} GB libres <span v-if="terminal.system.disk_c_total_gb">/ {{ terminal.system.disk_c_total_gb }} GB</span>
+          </template>
+          <template v-else>
+            Espacio no reportado
+          </template>
+        </span>
       </div>
       <div class="bg-zinc-900/80 p-2.5 rounded-lg border border-zinc-800">
         <span class="text-xs text-zinc-400 block">SQL Server</span>
@@ -51,9 +66,19 @@ const statusColor = computed(() => {
       </div>
     </div>
 
-    <div class="mt-3 flex items-center justify-between text-[11px] text-zinc-400 pt-2 border-t border-zinc-800/80">
-      <span>Activo: <strong class="text-zinc-200 font-mono">{{ terminal.system.uptime_formatted }}</strong></span>
-      <span>Actualizado: {{ new Date(terminal.timestamp).toLocaleTimeString() }}</span>
+    <!-- Pie de la tarjeta: Tiempo activo y última sincronización -->
+    <div class="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400">
+      <div class="flex items-center gap-1.5" :title="'Formato exacto: ' + (terminal.system.uptime_formatted || 'N/A')">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span>Activo:</span>
+        <strong class="font-mono text-zinc-200">
+          {{ terminal.system.uptime_human || terminal.system.uptime_formatted || 'Desconocido' }}
+        </strong>
+      </div>
+
+      <span class="text-zinc-500">
+        Actualizado: {{ terminal.timestamp ? new Date(terminal.timestamp).toLocaleTimeString() : 'N/A' }}
+      </span>
     </div>
   </div>
 </template>
