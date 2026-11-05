@@ -3,34 +3,30 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Color base y soporte para toda la pantalla */
 html,
 body {
   background-color: #09090b; /* zinc-950 */
   color: #f4f4f5;
   width: 100%;
-  /*overflow-x: hidden; Evita desplazamientos laterales accidentales*/
 }
 
-/* Ocultar la barra de scroll en toda la web sin bloquear el desplazamiento */
+/* Ocultar barra de scroll global */
 html::-webkit-scrollbar,
 body::-webkit-scrollbar {
-  display: none; /* Chrome, Safari, Opera */
+  display: none;
 }
 
 html,
 body {
-  -ms-overflow-style: none; /* IE y Edge */
-  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
-/* Safe areas para el Notch / Dynamic Island */
 body {
-  padding-top: env(safe-area-inset-top);
+  /* Mantenemos solo el margen inferior para el indicador de inicio de iOS */
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-/* Utilidad para elementos específicos con scroll horizontal (como los botones de delegaciones) */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
