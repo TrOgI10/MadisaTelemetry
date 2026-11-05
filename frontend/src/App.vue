@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { collection, onSnapshot, type Unsubscribe } from "firebase/firestore";
-import { db } from "./firebase";
+import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
+import { db, auth } from "./firebase";
 import TerminalCard from './components/TerminalCard.vue';
+import LoginView from './components/LoginView.vue';
 import type { TerminalTelemetry, HealthStatus } from './types/telemetry';
+
+const currentUser = ref<User | null>(null);
+const authChecking = ref(true);
 
 const selectedDelegation = ref<string>('TODAS');
 const searchQuery = ref<string>('');
@@ -21,10 +26,8 @@ function evaluateStatus(system: any): HealthStatus {
   return 'green';
 }
 
-onMounted(() => {
-  // Suscripción reactiva en tiempo real a la colección 'terminals'
+function startTelemetryListener() {
   const terminalsCol = collection(db, 'terminals');
-  
   unsubscribe = onSnapshot(terminalsCol, (snapshot) => {
     terminals.value = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
@@ -43,14 +46,33 @@ onMounted(() => {
   }, (error) => {
     console.error("Error al escuchar Firestore:", error);
   });
+}
+
+onMounted(() => {
+  // Comprobación de autenticación
+  onAuthStateChanged(auth, (user) => {
+    currentUser.value = user;
+    authChecking.value = false;
+
+    // Solo activamos la escucha en Firestore si hay sesión iniciada
+    if (user) {
+      startTelemetryListener();
+    } else if (unsubscribe) {
+      unsubscribe();
+      unsubscribe = null;
+    }
+  });
 });
 
 onUnmounted(() => {
-  // Limpiar el listener al desmontar el componente
   if (unsubscribe) {
     unsubscribe();
   }
 });
+
+const handleLogout = async () => {
+  await signOut(auth);
+};
 
 // Filtro en memoria: Delegación + Buscador reactivo por nombre o ID
 const filteredTerminals = computed(() => {
@@ -71,80 +93,115 @@ const filteredTerminals = computed(() => {
 </script>
 
 <template>
-  <main class="min-h-screen bg-zinc-950 text-zinc-100 p-6 md:p-10 font-sans">
-    <!-- Encabezado con buscador y selectores -->
-    <header class="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-zinc-800 gap-4">
-      <div>
-        <h1 class="text-2xl font-black tracking-tight text-white flex items-center gap-2">
-          <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
-          Madisa Telemetry Suite
-        </h1>
-        <p class="text-xs text-zinc-400 mt-1">Monitorización continua de terminales TPV y servidores</p>
+  <!-- Pantalla de carga mientras comprueba si hay sesión guardada -->
+  <div v-if="authChecking" class="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-400 text-sm">
+    Cargando sesión...
+  </div>
+
+  <!-- Si NO está logueado, muestra el login -->
+  <LoginView v-else-if="!currentUser" />
+
+  <!-- Si SÍ está logueado, muestra el Dashboard con botón de salir -->
+  <div v-else class="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
+    <!-- Barra superior de sesión corporativa -->
+    <header class="flex justify-between items-center px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
+      <div class="flex items-center gap-3">
+        <img src="/logoMadisaTelemetry.png" alt="Logo" class="w-8 h-8 object-contain" />
+        <span class="font-bold tracking-wide text-sm sm:text-base">Madisa Telemetry</span>
       </div>
 
-      <div class="flex flex-col sm:flex-row items-center gap-3">
-        <!-- Input de búsqueda reactivo -->
-        <div class="relative w-full sm:w-64">
-          <input
-            v-model="searchQuery"
-            type="text"
-            placeholder="Buscar por cliente o TPV..."
-            class="w-full bg-zinc-900 border border-zinc-700 text-xs rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
-          />
-          <button
-            v-if="searchQuery"
-            @click="searchQuery = ''"
-            class="absolute right-2.5 top-2 text-xs text-zinc-400 hover:text-white"
-          >
-            ✕
-          </button>
+      <div class="flex items-center gap-4">
+        <!-- Indicador de usuario conectado -->
+        <div class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span class="text-zinc-200 font-medium">{{ currentUser?.email }}</span>
         </div>
 
-        <!-- Botones de delegación -->
-        <div class="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
-          <button
-            v-for="del in delegations"
-            :key="del"
-            @click="selectedDelegation = del"
-            :class="[
-              'px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-colors whitespace-nowrap',
-              selectedDelegation === del
-                ? 'bg-blue-600 text-white shadow'
-                : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
-            ]"
-          >
-            {{ del }}
-          </button>
-        </div>
+        <!-- Botón de Cerrar Sesión -->
+        <button 
+          @click="handleLogout" 
+          class="text-xs bg-zinc-800 hover:bg-zinc-700 hover:text-white text-zinc-300 px-3 py-1.5 rounded-lg border border-zinc-700 transition-colors"
+        >
+          Cerrar Sesión
+        </button>
       </div>
     </header>
 
-    <!-- Indicadores de estado -->
-    <section class="grid grid-cols-3 gap-4 my-6">
-      <div class="p-3 bg-zinc-900 rounded-xl border border-zinc-800 text-center">
-        <span class="text-xs text-zinc-500 block">Total Mostrados</span>
-        <span class="text-xl font-bold">{{ filteredTerminals.length }}</span>
-      </div>
-      <div class="p-3 bg-emerald-950/30 rounded-xl border border-emerald-900/50 text-center text-emerald-400">
-        <span class="text-xs opacity-75 block">Óptimos</span>
-        <span class="text-xl font-bold">{{ filteredTerminals.filter(t => t.status === 'green').length }}</span>
-      </div>
-      <div class="p-3 bg-rose-950/30 rounded-xl border border-rose-900/50 text-center text-rose-400">
-        <span class="text-xs opacity-75 block">Atención Requerida</span>
-        <span class="text-xl font-bold">{{ filteredTerminals.filter(t => t.status !== 'green').length }}</span>
-      </div>
-    </section>
+    <!-- Contenido principal del panel -->
+    <main class="p-6 md:p-10">
+      <div class="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-zinc-800 gap-4">
+        <div>
+          <h1 class="text-2xl font-black tracking-tight text-white flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></span>
+            Madisa Telemetry Suite
+          </h1>
+          <p class="text-xs text-zinc-400 mt-1">Monitorización continua de terminales TPV y servidores</p>
+        </div>
 
-    <!-- Listado de tarjetas de terminales -->
-    <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-      <div v-if="filteredTerminals.length === 0" class="col-span-full text-center py-16 text-zinc-500 text-sm">
-        No se encontraron terminales para los filtros seleccionados.
+        <div class="flex flex-col sm:flex-row items-center gap-3">
+          <!-- Input de búsqueda reactivo -->
+          <div class="relative w-full sm:w-64">
+            <input
+              v-model="searchQuery"
+              type="text"
+              placeholder="Buscar por cliente o TPV..."
+              class="w-full bg-zinc-900 border border-zinc-700 text-xs rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            <button
+              v-if="searchQuery"
+              @click="searchQuery = ''"
+              class="absolute right-2.5 top-2 text-xs text-zinc-400 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
+
+          <!-- Botones de delegación -->
+          <div class="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+            <button
+              v-for="del in delegations"
+              :key="del"
+              @click="selectedDelegation = del"
+              :class="[
+                'px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-colors whitespace-nowrap',
+                selectedDelegation === del
+                  ? 'bg-blue-600 text-white shadow'
+                  : 'bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+              ]"
+            >
+              {{ del }}
+            </button>
+          </div>
+        </div>
       </div>
-      <TerminalCard
-        v-for="terminal in filteredTerminals"
-        :key="terminal.client_id + '_' + terminal.terminal_id"
-        :terminal="terminal"
-      />
-    </section>
-  </main>
+
+      <!-- Indicadores de estado -->
+      <section class="grid grid-cols-3 gap-4 my-6">
+        <div class="p-3 bg-zinc-900 rounded-xl border border-zinc-800 text-center">
+          <span class="text-xs text-zinc-500 block">Total Mostrados</span>
+          <span class="text-xl font-bold">{{ filteredTerminals.length }}</span>
+        </div>
+        <div class="p-3 bg-emerald-950/30 rounded-xl border border-emerald-900/50 text-center text-emerald-400">
+          <span class="text-xs opacity-75 block">Óptimos</span>
+          <span class="text-xl font-bold">{{ filteredTerminals.filter(t => t.status === 'green').length }}</span>
+        </div>
+        <div class="p-3 bg-rose-950/30 rounded-xl border border-rose-900/50 text-center text-rose-400">
+          <span class="text-xs opacity-75 block">Atención Requerida</span>
+          <span class="text-xl font-bold">{{ filteredTerminals.filter(t => t.status !== 'green').length }}</span>
+        </div>
+      </section>
+
+      <!-- Listado de tarjetas de terminales -->
+      <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div v-if="filteredTerminals.length === 0" class="col-span-full text-center py-16 text-zinc-500 text-sm">
+          No se encontraron terminales para los filtros seleccionados.
+        </div>
+        <TerminalCard
+          v-for="terminal in filteredTerminals"
+          :key="terminal.client_id + '_' + terminal.terminal_id"
+          :terminal="terminal"
+        />
+      </section>
+    </main>
+  </div>
 </template>
