@@ -13,6 +13,7 @@ const authChecking = ref(true);
 const selectedDelegation = ref<string>('TODAS');
 const searchQuery = ref<string>('');
 const delegations = ['TODAS', 'PALMA', 'MADRID', 'BARCELONA', 'IBIZA'];
+const isMobileMenuOpen = ref(false);
 
 const terminals = ref<TerminalTelemetry[]>([]);
 let unsubscribe: Unsubscribe | null = null;
@@ -70,6 +71,29 @@ onUnmounted(() => {
   }
 });
 
+// Comprobación de actualizaciones al volver a la app en iOS
+onMounted(() => {
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState === 'visible') {
+      try {
+        // Petición con timestamp para saltar cualquier caché local
+        const res = await fetch(`/index.html?t=${Date.now()}`, { method: 'HEAD' });
+        const etag = res.headers.get('ETag');
+        const savedEtag = localStorage.getItem('app_version_etag');
+
+        if (savedEtag && etag && savedEtag !== etag) {
+          localStorage.setItem('app_version_etag', etag);
+          window.location.reload();
+        } else if (etag) {
+          localStorage.setItem('app_version_etag', etag);
+        }
+      } catch (e) {
+        // Sin conexión, continúa con la versión actual
+      }
+    }
+  });
+});
+
 const handleLogout = async () => {
   await signOut(auth);
 };
@@ -103,28 +127,111 @@ const filteredTerminals = computed(() => {
 
   <!-- Si SÍ está logueado, muestra el Dashboard con botón de salir -->
   <div v-else class="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
-    <!-- Barra superior de sesión corporativa -->
-    <header class="flex justify-between items-center px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
-      <div class="flex items-center gap-3">
-        <img src="/logoMadisaTelemetry.png" alt="Logo" class="w-8 h-8 object-contain" />
-        <span class="font-bold tracking-wide text-sm sm:text-base">Madisa Telemetry</span>
-      </div>
-
-      <div class="flex items-center gap-4">
-        <!-- Indicador de usuario conectado -->
-        <div class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg">
-          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
-          <span class="text-zinc-200 font-medium">{{ currentUser?.email }}</span>
+    <!-- Barra superior responsiva -->
+    <header class="relative px-4 sm:px-6 py-3 border-b border-zinc-800 bg-zinc-900/60 backdrop-blur-md z-40">
+      <div class="flex justify-between items-center">
+        <!-- Logo y título -->
+        <div class="flex items-center gap-3">
+          <img src="/logoMadisaTelemetry.png" alt="Logo" class="w-8 h-8 object-contain" />
+          <span class="font-bold tracking-wide text-sm sm:text-base text-zinc-100">Madisa Telemetry</span>
         </div>
 
-        <!-- Botón de Cerrar Sesión -->
+        <!-- MODO ESCRITORIO (>= 640px) -->
+        <div class="hidden sm:flex items-center gap-4">
+          <div class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-950 border border-zinc-800 px-3 py-1.5 rounded-lg">
+            <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+            <span class="text-zinc-200 font-medium">{{ currentUser?.email }}</span>
+          </div>
+
+          <button 
+            @click="handleLogout" 
+            class="text-xs bg-zinc-800 hover:bg-zinc-700 hover:text-white text-zinc-300 px-3 py-1.5 rounded-lg border border-zinc-700 transition-colors"
+          >
+            Cerrar Sesión
+          </button>
+        </div>
+
+        <!-- MODO MÓVIL: Botón Hamburguesa (< 640px) -->
         <button 
-          @click="handleLogout" 
-          class="text-xs bg-zinc-800 hover:bg-zinc-700 hover:text-white text-zinc-300 px-3 py-1.5 rounded-lg border border-zinc-700 transition-colors"
+          @click="isMobileMenuOpen = true"
+          type="button"
+          aria-label="Abrir menú"
+          class="sm:hidden p-2 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300 hover:text-white transition-colors focus:outline-none"
         >
-          Cerrar Sesión
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
         </button>
       </div>
+
+      <!-- MENÚ LATERAL (DRAWER) PARA MÓVIL -->
+      <Teleport to="body">
+        <!-- Fondo oscuro semitransparente (overlay) -->
+        <transition
+          enter-active-class="transition-opacity duration-300 ease-out"
+          enter-from-class="opacity-0"
+          enter-to-class="opacity-100"
+          leave-active-class="transition-opacity duration-200 ease-in"
+          leave-from-class="opacity-100"
+          leave-to-class="opacity-0"
+        >
+          <div 
+            v-if="isMobileMenuOpen" 
+            @click="isMobileMenuOpen = false" 
+            class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 sm:hidden"
+          ></div>
+        </transition>
+
+        <!-- Panel lateral deslizable desde la derecha -->
+        <transition
+          enter-active-class="transition-transform duration-300 ease-out"
+          enter-from-class="translate-x-full"
+          enter-to-class="translate-x-0"
+          leave-active-class="transition-transform duration-200 ease-in"
+          leave-from-class="translate-x-0"
+          leave-to-class="translate-x-full"
+        >
+          <div 
+            v-if="isMobileMenuOpen"
+            class="fixed top-0 right-0 h-full w-72 max-w-[80vw] bg-zinc-950 border-l border-zinc-800 p-6 flex flex-col justify-between z-50 sm:hidden shadow-2xl"
+          >
+            <!-- Parte superior del lateral -->
+            <div>
+              <div class="flex items-center justify-between pb-5 border-b border-zinc-800/80">
+                <span class="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Usuario</span>
+                <button 
+                  @click="isMobileMenuOpen = false"
+                  class="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white"
+                >
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Info de usuario -->
+              <div class="mt-6 flex flex-col gap-2">
+                <span class="text-[11px] text-zinc-500 font-medium">Técnico activo</span>
+                <div class="flex items-center gap-2.5 text-xs text-zinc-200 bg-zinc-900/90 border border-zinc-800/80 p-3 rounded-xl">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 flex-shrink-0 animate-pulse"></span>
+                  <span class="truncate font-medium">{{ currentUser?.email }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Botón cerrar sesión abajo del panel lateral -->
+            <button 
+              @click="() => { isMobileMenuOpen = false; handleLogout(); }" 
+              class="w-full text-xs font-semibold bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-900/70 py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              <span>Cerrar Sesión</span>
+            </button>
+          </div>
+        </transition>
+      </Teleport>
     </header>
 
     <!-- Contenido principal del panel -->
@@ -145,7 +252,7 @@ const filteredTerminals = computed(() => {
               v-model="searchQuery"
               type="text"
               placeholder="Buscar por cliente o TPV..."
-              class="w-full bg-zinc-900 border border-zinc-700 text-xs rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
+              class="w-full bg-zinc-900 border border-zinc-700 text-base sm:text-xs rounded-lg px-3 py-2 text-white placeholder-zinc-500 focus:outline-none focus:border-blue-500 transition-colors"
             />
             <button
               v-if="searchQuery"
@@ -157,7 +264,7 @@ const filteredTerminals = computed(() => {
           </div>
 
           <!-- Botones de delegación -->
-          <div class="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar [-webkit-overflow-scrolling:touch] w-full sm:w-auto pb-1">
             <button
               v-for="del in delegations"
               :key="del"

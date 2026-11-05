@@ -65,28 +65,30 @@ const handleForgotPassword = async () => {
           <label class="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
             Correo corporativo
           </label>
-          <input 
-            v-model="email" 
-            type="email" 
-            required
-            autocomplete="email"
-            placeholder="tecnico@madisa.com"
-            class="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg focus:outline-none focus:border-cyan-500 text-zinc-100 placeholder-zinc-500 text-sm transition-colors"
-          />
+          <!-- Correo corporativo -->
+            <input 
+              v-model="email" 
+              type="email" 
+              required
+              autocomplete="email"
+              placeholder="tecnico@madisa.com"
+              class="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg focus:outline-none focus:border-cyan-500 text-zinc-100 placeholder-zinc-500 text-base transition-colors"
+            />
         </div>
 
         <div>
           <label class="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
             Contraseña
           </label>
-          <input 
-            v-model="password" 
-            type="password" 
-            required
-            autocomplete="current-password"
-            placeholder="••••••••"
-            class="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg focus:outline-none focus:border-cyan-500 text-zinc-100 placeholder-zinc-500 text-sm transition-colors"
-          />
+          <!-- Contraseña -->
+            <input 
+              v-model="password" 
+              type="password" 
+              required
+              autocomplete="current-password"
+              placeholder="••••••••"
+              class="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg focus:outline-none focus:border-cyan-500 text-zinc-100 placeholder-zinc-500 text-base transition-colors"
+            />
         </div>
 
         <!-- Enlace olvidé mi contraseña -->
