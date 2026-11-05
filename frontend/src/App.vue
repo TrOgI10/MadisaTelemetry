@@ -193,15 +193,16 @@ const filteredTerminals = computed(() => {
         >
           <div 
             v-if="isMobileMenuOpen"
-            class="fixed top-0 right-0 h-full w-72 max-w-[80vw] bg-zinc-950 border-l border-zinc-800 p-6 flex flex-col justify-between z-50 sm:hidden shadow-2xl"
+            class="fixed top-0 right-0 h-[100dvh] w-72 max-w-[80vw] bg-zinc-950 border-l border-zinc-800 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col justify-between z-50 sm:hidden shadow-2xl"
           >
             <!-- Parte superior del lateral -->
             <div>
-              <div class="flex items-center justify-between pb-5 border-b border-zinc-800/80">
+              <div class="flex items-center justify-between pb-4 border-b border-zinc-800/80">
                 <span class="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Usuario</span>
                 <button 
                   @click="isMobileMenuOpen = false"
-                  class="p-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white"
+                  aria-label="Cerrar menú"
+                  class="p-2 rounded-lg bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white transition-colors"
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -220,15 +221,17 @@ const filteredTerminals = computed(() => {
             </div>
 
             <!-- Botón cerrar sesión abajo del panel lateral -->
-            <button 
-              @click="() => { isMobileMenuOpen = false; handleLogout(); }" 
-              class="w-full text-xs font-semibold bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-900/70 py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              <span>Cerrar Sesión</span>
-            </button>
+            <div>
+              <button 
+                @click="() => { isMobileMenuOpen = false; handleLogout(); }" 
+                class="w-full text-xs font-semibold bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-900/70 py-3 px-4 rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span>Cerrar Sesión</span>
+              </button>
+            </div>
           </div>
         </transition>
       </Teleport>
