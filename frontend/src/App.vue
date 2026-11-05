@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { collection, onSnapshot, type Unsubscribe } from "firebase/firestore";
 import { onAuthStateChanged, signOut, type User } from 'firebase/auth';
 import { db, auth } from "./firebase";
@@ -7,13 +7,33 @@ import TerminalCard from './components/TerminalCard.vue';
 import LoginView from './components/LoginView.vue';
 import type { TerminalTelemetry, HealthStatus } from './types/telemetry';
 
+// Control de autenticación y sesión
 const currentUser = ref<User | null>(null);
 const authChecking = ref(true);
 
+// Control del menú lateral en móvil
+const isMobileMenuOpen = ref(false);
+
+// Filtros y datos
 const selectedDelegation = ref<string>('TODAS');
 const searchQuery = ref<string>('');
 const delegations = ['TODAS', 'PALMA', 'MADRID', 'BARCELONA', 'IBIZA'];
-const isMobileMenuOpen = ref(false);
+
+// Bloquea el scroll del fondo cuando el menú lateral está abierto en móvil
+watch(isMobileMenuOpen, (isOpen) => {
+  if (isOpen) {
+    document.body.style.overflow = 'hidden';
+  } else {
+    document.body.style.overflow = '';
+  }
+});
+
+onUnmounted(() => {
+  if (unsubscribe) {
+    unsubscribe();
+  }
+  document.body.style.overflow = '';
+});
 
 const terminals = ref<TerminalTelemetry[]>([]);
 let unsubscribe: Unsubscribe | null = null;
@@ -50,12 +70,11 @@ function startTelemetryListener() {
 }
 
 onMounted(() => {
-  // Comprobación de autenticación
+  // Comprobación de autenticación de usuario
   onAuthStateChanged(auth, (user) => {
     currentUser.value = user;
     authChecking.value = false;
 
-    // Solo activamos la escucha en Firestore si hay sesión iniciada
     if (user) {
       startTelemetryListener();
     } else if (unsubscribe) {
@@ -63,20 +82,11 @@ onMounted(() => {
       unsubscribe = null;
     }
   });
-});
 
-onUnmounted(() => {
-  if (unsubscribe) {
-    unsubscribe();
-  }
-});
-
-// Comprobación de actualizaciones al volver a la app en iOS
-onMounted(() => {
+  // Comprobación de actualizaciones al volver a la app en móvil
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible') {
       try {
-        // Petición con timestamp para saltar cualquier caché local
         const res = await fetch(`/index.html?t=${Date.now()}`, { method: 'HEAD' });
         const etag = res.headers.get('ETag');
         const savedEtag = localStorage.getItem('app_version_etag');
@@ -88,17 +98,23 @@ onMounted(() => {
           localStorage.setItem('app_version_etag', etag);
         }
       } catch (e) {
-        // Sin conexión, continúa con la versión actual
+        // Modo sin conexión silencioso
       }
     }
   });
+});
+
+onUnmounted(() => {
+  if (unsubscribe) {
+    unsubscribe();
+  }
 });
 
 const handleLogout = async () => {
   await signOut(auth);
 };
 
-// Filtro en memoria: Delegación + Buscador reactivo por nombre o ID
+// Filtro en memoria: Delegación + Buscador reactivo
 const filteredTerminals = computed(() => {
   return terminals.value.filter((t) => {
     const matchesDelegation =
@@ -117,20 +133,21 @@ const filteredTerminals = computed(() => {
 </script>
 
 <template>
-  <!-- Pantalla de carga mientras comprueba si hay sesión guardada -->
+  <!-- Pantalla de carga mientras comprueba la sesión -->
   <div v-if="authChecking" class="min-h-screen flex items-center justify-center bg-zinc-950 text-zinc-400 text-sm">
     Cargando sesión...
   </div>
 
-  <!-- Si NO está logueado, muestra el login -->
+  <!-- Si NO hay sesión activa, muestra la pantalla de inicio de sesión -->
   <LoginView v-else-if="!currentUser" />
 
-  <!-- Si SÍ está logueado, muestra el Dashboard con botón de salir -->
+  <!-- Si la sesión es válida, muestra el Dashboard -->
   <div v-else class="min-h-screen bg-zinc-950 text-zinc-100 font-sans">
-    <!-- Barra superior responsiva -->
-    <header class="relative px-4 sm:px-6 py-3 border-b border-zinc-800 bg-zinc-900/60 backdrop-blur-md z-40">
+    
+    <!-- BARRA SUPERIOR FIJA -->
+    <header class="fixed top-0 left-0 right-0 w-full px-4 sm:px-6 py-3 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md z-30">
       <div class="flex justify-between items-center">
-        <!-- Logo y título -->
+        <!-- Logo corporativo y título -->
         <div class="flex items-center gap-3">
           <img src="/logoMadisaTelemetry.png" alt="Logo" class="w-8 h-8 object-contain" />
           <span class="font-bold tracking-wide text-sm sm:text-base text-zinc-100">Madisa Telemetry</span>
@@ -138,7 +155,7 @@ const filteredTerminals = computed(() => {
 
         <!-- MODO ESCRITORIO (>= 640px) -->
         <div class="hidden sm:flex items-center gap-4">
-          <div class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-950 border border-zinc-800 px-3 py-1.5 rounded-lg">
+          <div class="flex items-center gap-2 text-xs text-zinc-400 bg-zinc-900 border border-zinc-800 px-3 py-1.5 rounded-lg">
             <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
             <span class="text-zinc-200 font-medium">{{ currentUser?.email }}</span>
           </div>
@@ -164,9 +181,9 @@ const filteredTerminals = computed(() => {
         </button>
       </div>
 
-      <!-- MENÚ LATERAL (DRAWER) PARA MÓVIL -->
+      <!-- MENÚ LATERAL DESLIZABLE (DRAWER) PARA MÓVIL -->
       <Teleport to="body">
-        <!-- Fondo oscuro semitransparente (overlay) -->
+        <!-- Fondo oscurecido con desenfoque -->
         <transition
           enter-active-class="transition-opacity duration-300 ease-out"
           enter-from-class="opacity-0"
@@ -182,7 +199,7 @@ const filteredTerminals = computed(() => {
           ></div>
         </transition>
 
-        <!-- Panel lateral deslizable desde la derecha -->
+        <!-- Panel lateral derecho con márgenes seguros para iOS -->
         <transition
           enter-active-class="transition-transform duration-300 ease-out"
           enter-from-class="translate-x-full"
@@ -195,7 +212,7 @@ const filteredTerminals = computed(() => {
             v-if="isMobileMenuOpen"
             class="fixed top-0 right-0 h-[100dvh] w-72 max-w-[80vw] bg-zinc-950 border-l border-zinc-800 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] flex flex-col justify-between z-50 sm:hidden shadow-2xl"
           >
-            <!-- Parte superior del lateral -->
+            <!-- Cabecera del lateral -->
             <div>
               <div class="flex items-center justify-between pb-4 border-b border-zinc-800/80">
                 <span class="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Usuario</span>
@@ -210,7 +227,7 @@ const filteredTerminals = computed(() => {
                 </button>
               </div>
 
-              <!-- Info de usuario -->
+              <!-- Información del técnico conectado -->
               <div class="mt-6 flex flex-col gap-2">
                 <span class="text-[11px] text-zinc-500 font-medium">Técnico activo</span>
                 <div class="flex items-center gap-2.5 text-xs text-zinc-200 bg-zinc-900/90 border border-zinc-800/80 p-3 rounded-xl">
@@ -220,7 +237,7 @@ const filteredTerminals = computed(() => {
               </div>
             </div>
 
-            <!-- Botón cerrar sesión abajo del panel lateral -->
+            <!-- Botón de desconexión -->
             <div>
               <button 
                 @click="() => { isMobileMenuOpen = false; handleLogout(); }" 
@@ -237,8 +254,9 @@ const filteredTerminals = computed(() => {
       </Teleport>
     </header>
 
-    <!-- Contenido principal del panel -->
-    <main class="p-6 md:p-10">
+    <!-- CONTENIDO PRINCIPAL (con relleno superior para compensar la barra fija) -->
+    <main class="pt-20 px-6 pb-6 md:px-10 md:pb-10">
+      <!-- Encabezado con buscador y selectores de delegación -->
       <div class="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-zinc-800 gap-4">
         <div>
           <h1 class="text-2xl font-black tracking-tight text-white flex items-center gap-2">
@@ -266,7 +284,7 @@ const filteredTerminals = computed(() => {
             </button>
           </div>
 
-          <!-- Botones de delegación -->
+          <!-- Botones de delegación con scroll táctil sin barra visible -->
           <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar [-webkit-overflow-scrolling:touch] w-full sm:w-auto pb-1">
             <button
               v-for="del in delegations"
@@ -285,7 +303,7 @@ const filteredTerminals = computed(() => {
         </div>
       </div>
 
-      <!-- Indicadores de estado -->
+      <!-- Tarjetas de resumen de estado -->
       <section class="grid grid-cols-3 gap-4 my-6">
         <div class="p-3 bg-zinc-900 rounded-xl border border-zinc-800 text-center">
           <span class="text-xs text-zinc-500 block">Total Mostrados</span>
@@ -301,7 +319,7 @@ const filteredTerminals = computed(() => {
         </div>
       </section>
 
-      <!-- Listado de tarjetas de terminales -->
+      <!-- Rejilla de tarjetas de terminales -->
       <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         <div v-if="filteredTerminals.length === 0" class="col-span-full text-center py-16 text-zinc-500 text-sm">
           No se encontraron terminales para los filtros seleccionados.

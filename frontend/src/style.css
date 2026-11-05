@@ -9,7 +9,7 @@ body {
   background-color: #09090b; /* zinc-950 */
   color: #f4f4f5;
   width: 100%;
-  overflow-x: hidden; /* Evita desplazamientos laterales accidentales */
+  /*overflow-x: hidden; Evita desplazamientos laterales accidentales*/
 }
 
 /* Ocultar la barra de scroll en toda la web sin bloquear el desplazamiento */
