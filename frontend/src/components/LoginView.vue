@@ -50,7 +50,7 @@ const handleForgotPassword = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-zinc-950 px-4 text-zinc-100">
+  <div class="min-h-[100dvh] flex items-center justify-center bg-zinc-950 px-4 text-zinc-100">
     <div class="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl">
       <!-- Cabecera -->
       <div class="flex flex-col items-center mb-8">

@@ -1,1 +1,18 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Evita que el fondo del navegador sea blanco en el overscroll de iOS */
+html,
+body {
+  background-color: #09090b; /* zinc-950 */
+  color: #f4f4f5;
+  min-height: 100%;
+  overscroll-behavior-y: none; /* Bloquea el rebote elástico blanco al deslizar */
+}
+
+/* Soporte para pantallas con Dynamic Island / Notch */
+body {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
