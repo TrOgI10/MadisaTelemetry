@@ -4,7 +4,14 @@ export type HealthStatus = 'green' | 'amber' | 'red';
 
 export type Delegation = 'PALMA' | 'MADRID' | 'BARCELONA' | 'IBIZA';
 
+export interface ProcessMetric {
+  name: string;
+  ram_mb?: number;
+  cpu_seconds?: number;
+}
+
 export interface SystemMetrics {
+  ip_private?: string;
   cpu_usage_percent: number;
   ram_used_gb: number;
   ram_total_gb: number;
@@ -18,6 +25,8 @@ export interface SystemMetrics {
   uptime_formatted?: string;
   uptime_hours?: number;
   uptime_human?: string;
+  top_ram_processes?: ProcessMetric[];
+  top_cpu_processes?: ProcessMetric[];
 }
 
 export interface DatabaseMetrics {
@@ -37,4 +46,5 @@ export interface TerminalTelemetry {
   system: SystemMetrics;
   database?: DatabaseMetrics;
   status: HealthStatus;
+  isOffline?: boolean;
 }
