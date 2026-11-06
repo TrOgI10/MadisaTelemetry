@@ -24,9 +24,9 @@ function Write-AgentLog ([string]$msg) {
 # 1. Cargar Configuración del Cliente desde config.json
 # ------------------------------------------------------------------------------
 $ProjectId   = "loho-3ca05"
-$ClientId    = "MADISA"
-$ClientName  = "TPV-GENERICO"
-$Delegation  = "PALMA"
+$ClientId    = "#" # NOMBRE CLIENTE
+$ClientName  = "#" # DISPOSITIVO
+$Delegation  = "PALMA" # DELEGACIÓN
 $Zone        = 1
 
 if (Test-Path $configFile) {
