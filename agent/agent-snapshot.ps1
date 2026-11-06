@@ -134,10 +134,26 @@ try {
     $sqlStatus  = if ($sqlService) { $sqlService.Status.ToString() } else { "NotInstalled" }
     $spoolJobs  = (Get-CimInstance -ClassName Win32_PrintJob -OperationTimeoutSec 10 -ErrorAction SilentlyContinue | Measure-Object).Count
 
-    # IP Privada Local (IPv4 física activa)
-    $localIp = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "Ethernet*","Wi-Fi*","Local*" -ErrorAction SilentlyContinue |
-        Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.254.*" } |
-        Select-Object -First 1).IPAddress
+    # 5. IP Privada Local Real (filtrando adaptadores virtuales y buscando la ruta al router)
+    $localIp = (Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
+        Sort-Object -Property RouteMetric |
+        Select-Object -First 1 |
+        ForEach-Object {
+            (Get-NetIPAddress -InterfaceIndex $_.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).IPAddress
+        })
+
+    # Si por algún motivo no hay ruta por defecto (offline en ese momento), filtrar interfaces conocidas
+    if ([string]::IsNullOrWhiteSpace($localIp)) {
+        $localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+            Where-Object { 
+                $_.IPAddress -notlike "127.*" -and 
+                $_.IPAddress -notlike "169.254.*" -and
+                $_.IPAddress -notlike "192.168.56.*" -and
+                $_.InterfaceAlias -notmatch "VirtualBox|VMware|vEthernet|Loopback|WSL|Docker"
+            } |
+            Select-Object -First 1).IPAddress
+    }
+
     if ([string]::IsNullOrWhiteSpace($localIp)) { $localIp = "No disponible" }
 
     # Procesos Principales (Top 3 por RAM y Top 3 por CPU)
