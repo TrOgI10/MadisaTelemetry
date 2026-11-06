@@ -57,7 +57,7 @@ if (Test-Path $configFile) {
 # 2. Rutina de Auto-Actualización Segura (Descarga a archivo, sin irm | iex)
 # ------------------------------------------------------------------------------
 $CurrentVersion  = "1.2.2"
-$UpdateScriptUrl = "https://github.com/TrOgI10/MadisaTelemetry/blob/main/agent/agent-snapshot.ps1"
+$UpdateScriptUrl = "https://raw.githubusercontent.com/TrOgI10/MadisaTelemetry/refs/heads/main/agent/agent-snapshot.ps1"
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
