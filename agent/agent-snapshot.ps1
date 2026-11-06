@@ -56,8 +56,8 @@ if (Test-Path $configFile) {
 # ------------------------------------------------------------------------------
 # 2. Rutina de Auto-Actualización Segura (Descarga a archivo, sin irm | iex)
 # ------------------------------------------------------------------------------
-$CurrentVersion  = "1.2.1"
-$UpdateScriptUrl = "https://raw.githubusercontent.com/TrOgI10/MadisaTelemetry/main/agent-snapshot.ps1"
+$CurrentVersion  = "1.2.2"
+$UpdateScriptUrl = "https://github.com/TrOgI10/MadisaTelemetry/blob/main/agent/agent-snapshot.ps1"
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
@@ -204,7 +204,7 @@ try {
         }
     }
 
-    Write-AgentLog "PRUEBA: Ejecutando version actualizada 1.2.1 con exito."
+    Write-AgentLog "PRUEBA: Ejecutando version actualizada 1.2.2 con exito."
     
     $jsonPath = Join-Path -Path $OutputDir -ChildPath "snapshot.json"
     $localData | ConvertTo-Json -Depth 6 | Set-Content -Path $jsonPath -Encoding UTF8
