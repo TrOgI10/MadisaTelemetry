@@ -38,7 +38,7 @@ if (Test-Path $configFile) {
         if ($cfg.delegation)     { $Delegation = [string]$cfg.delegation }
         if ($null -ne $cfg.zone) { $Zone       = [int]$cfg.zone }
     } catch {
-        Write-AgentLog "AVISO: Error leyendo config.json, usando parámetros por defecto."
+        Write-AgentLog "AVISO: Error leyendo config.json, usando parametros por defecto."
     }
 } else {
     # Si no existe, crear la plantilla inicial automáticamente
@@ -56,7 +56,7 @@ if (Test-Path $configFile) {
 # ------------------------------------------------------------------------------
 # 2. Rutina de Auto-Actualización Segura (Descarga a archivo, sin irm | iex)
 # ------------------------------------------------------------------------------
-$CurrentVersion  = "1.2.2"
+$CurrentVersion  = "1.2.3"
 $UpdateScriptUrl = "https://raw.githubusercontent.com/TrOgI10/MadisaTelemetry/refs/heads/main/agent/agent-snapshot.ps1"
 
 try {
@@ -74,7 +74,7 @@ try {
             $remoteVersion = $remoteVersionLine.Matches.Groups[1].Value
 
             if ($remoteVersion -and $remoteVersion -ne $CurrentVersion) {
-                Write-AgentLog "UPDATE: Detectada versión $remoteVersion (actual: $CurrentVersion). Reemplazando script..."
+                Write-AgentLog "UPDATE: Detectada version $remoteVersion (actual: $CurrentVersion). Reemplazando script..."
 
                 $thisScript = $MyInvocation.MyCommand.Path
                 if (-not $thisScript) { $thisScript = Join-Path -Path $OutputDir -ChildPath "agent-snapshot.ps1" }
@@ -82,7 +82,7 @@ try {
                 # Reemplazo atómico de archivo
                 Copy-Item -Path $tempScriptPath -Destination $thisScript -Force
                 Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
-                Write-AgentLog "OK: Script actualizado a versión $remoteVersion."
+                Write-AgentLog "OK: Script actualizado a version $remoteVersion."
             } else {
                 Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
             }
@@ -204,7 +204,7 @@ try {
         }
     }
 
-    Write-AgentLog "PRUEBA: Ejecutando version actualizada 1.2.2 con exito."
+    Write-AgentLog "PRUEBA: Ejecutando version actualizada 1.2.3 con exito."
     
     $jsonPath = Join-Path -Path $OutputDir -ChildPath "snapshot.json"
     $localData | ConvertTo-Json -Depth 6 | Set-Content -Path $jsonPath -Encoding UTF8
