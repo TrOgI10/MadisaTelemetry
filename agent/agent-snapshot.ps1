@@ -134,7 +134,7 @@ try {
     $sqlStatus  = if ($sqlService) { $sqlService.Status.ToString() } else { "NotInstalled" }
     $spoolJobs  = (Get-CimInstance -ClassName Win32_PrintJob -OperationTimeoutSec 10 -ErrorAction SilentlyContinue | Measure-Object).Count
 
-    # 5. IP Privada Local Real (filtrando adaptadores virtuales y buscando la ruta al router)
+    # 5. IP Privada Local Real e IP Pública
     $localIp = (Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
         Sort-Object -Property RouteMetric |
         Select-Object -First 1 |
@@ -142,7 +142,6 @@ try {
             (Get-NetIPAddress -InterfaceIndex $_.InterfaceIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).IPAddress
         })
 
-    # Si por algún motivo no hay ruta por defecto (offline en ese momento), filtrar interfaces conocidas
     if ([string]::IsNullOrWhiteSpace($localIp)) {
         $localIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
             Where-Object { 
@@ -153,8 +152,22 @@ try {
             } |
             Select-Object -First 1).IPAddress
     }
-
     if ([string]::IsNullOrWhiteSpace($localIp)) { $localIp = "No disponible" }
+
+    # Obtención de IP Pública
+    $publicIp = "No disponible"
+    try {
+        $wcIp = New-Object System.Net.WebClient
+        $wcIp.Headers.Add("User-Agent", "MadisaTelemetryAgent")
+        # Servicio rápido de texto plano con timeout implícito
+        $publicIp = ($wcIp.DownloadString("https://api.ipify.org")).Trim()
+    } catch {
+        try {
+            $publicIp = ((Invoke-RestMethod -Uri "https://ifconfig.me/ip" -TimeoutSec 3 -ErrorAction Stop)).Trim()
+        } catch {
+            $publicIp = "No disponible"
+        }
+    }
 
     # Procesos Principales (Top 3 por RAM y Top 3 por CPU)
     $allProcesses = Get-Process -ErrorAction SilentlyContinue
@@ -202,6 +215,7 @@ try {
         timestamp   = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
         system      = [ordered]@{
             ip_private          = $localIp
+            ip_public           = $publicIp
             cpu_usage_percent   = [int]$cpuLoad
             ram_used_gb         = $usedRamGb
             ram_total_gb        = $totalRamGb
@@ -245,6 +259,7 @@ try {
       "mapValue": {
         "fields": {
           "ip_private": { "stringValue": "$localIp" },
+          "ip_public": { "stringValue": "$publicIp" },
           "cpu_usage_percent": { "integerValue": $([int]$cpuLoad) },
           "ram_used_gb": { "doubleValue": $($usedRamGb.ToString($ci)) },
           "ram_total_gb": { "doubleValue": $($totalRamGb.ToString($ci)) },

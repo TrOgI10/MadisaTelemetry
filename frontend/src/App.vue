@@ -398,21 +398,28 @@ const filteredTerminals = computed(() => {
             </div>
 
             <!-- Fila: IP Privada y Estado SQL -->
-            <div class="mt-4 grid grid-cols-2 gap-3">
-              <div class="bg-zinc-950/80 p-3 rounded-xl border border-zinc-800/80">
-                <span class="text-[11px] text-zinc-500 uppercase block font-semibold">IP Privada Local</span>
-                <span class="text-sm font-mono text-cyan-400 font-medium">
-                  {{ selectedTerminalForModal.system.ip_private || 'No reportada' }}
-                </span>
+            <!-- Sección de Red / Direcciones IP -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <!-- IP Privada -->
+              <div class="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60">
+                <div class="text-xs text-slate-400 font-medium mb-1 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                  IP Privada (Local)
+                </div>
+                <div class="font-mono text-sm text-slate-200 font-semibold">
+                  {{ selectedTerminalForModal.system.ip_private || 'No disponible' }}
+                </div>
               </div>
-              <div class="bg-zinc-950/80 p-3 rounded-xl border border-zinc-800/80">
-                <span class="text-[11px] text-zinc-500 uppercase block font-semibold">Servicio SQL</span>
-                <span 
-                  class="text-sm font-medium"
-                  :class="selectedTerminalForModal.system.sql_service_status === 'Running' ? 'text-emerald-400' : 'text-rose-400'"
-                >
-                  {{ selectedTerminalForModal.system.sql_service_status }}
-                </span>
+
+              <!-- IP Pública -->
+              <div class="bg-slate-800/60 p-3 rounded-lg border border-slate-700/60">
+                <div class="text-xs text-slate-400 font-medium mb-1 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  IP Pública (Router / WAN)
+                </div>
+                <div class="font-mono text-sm text-slate-200 font-semibold">
+                  {{ selectedTerminalForModal.system.ip_public || 'No disponible' }}
+                </div>
               </div>
             </div>
 
