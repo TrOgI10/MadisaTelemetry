@@ -21,7 +21,7 @@ function Write-AgentLog ([string]$msg) {
 }
 
 # ------------------------------------------------------------------------------
-# 1. Cargar Configuración del Cliente desde config.json
+# 0. Cargar Configuración del Cliente desde config.json
 # ------------------------------------------------------------------------------
 $ProjectId   = "loho-3ca05"
 $ClientId    = "#" # NOMBRE CLIENTE
@@ -54,9 +54,57 @@ if (Test-Path $configFile) {
 }
 
 # ------------------------------------------------------------------------------
+# 1. Rutina de Auto-Actualización Silenciosa e Inmune a Caché
+# ------------------------------------------------------------------------------
+$CurrentVersion  = "1.2.6" # Version local de esta copia
+$TargetScript    = Join-Path -Path $OutputDir -ChildPath "agent-snapshot.ps1"
+$BaseUrl         = "https://raw.githubusercontent.com/TrOgI10/MadisaTelemetry/main/agent/agent-snapshot.ps1"
+$UpdateScriptUrl = "$BaseUrl`?nocache=$([DateTime]::UtcNow.Ticks)"
+
+try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $wc = New-Object System.Net.WebClient
+    $wc.Headers.Add("User-Agent", "MadisaTelemetryAgent")
+    $wc.Headers.Add("Cache-Control", "no-cache")
+    $wc.Headers.Add("Pragma", "no-cache")
+
+    $tempScriptPath = Join-Path -Path $OutputDir -ChildPath "agent-snapshot.tmp"
+    
+    # 1. Descarga el archivo remoto
+    $wc.DownloadFile($UpdateScriptUrl, $tempScriptPath)
+
+    if (Test-Path $tempScriptPath) {
+        $tempContent = Get-Content -Path $tempScriptPath -Raw -Encoding UTF8
+        
+        # Validar que no sea un 404 o texto corrupto
+        if ($tempContent -match '\$CurrentVersion\s*=\s*"([^"]+)"') {
+            $remoteVersion = $matches[1]
+
+            if ($remoteVersion -ne $CurrentVersion) {
+                Write-AgentLog "UPDATE: Nueva version detectada ($remoteVersion vs local $CurrentVersion). Aplicando..."
+
+                # Sobrescribir archivo destino
+                [System.IO.File]::WriteAllText($TargetScript, $tempContent, [System.Text.Encoding]::UTF8)
+                Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
+
+                Write-AgentLog "OK: Script local actualizado exitosamente a la version $remoteVersion."
+            } else {
+                Write-AgentLog "CHECK: Version al dia ($CurrentVersion). No requiere actualizacion."
+                Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
+            }
+        } else {
+            Write-AgentLog "UPDATE_ALERTA: El contenido descargado no contiene CurrentVersion (posible 404 o repo privado)."
+            Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+} catch {
+    Write-AgentLog "UPDATE_ERROR: $($_.Exception.Message)"
+}
+
+# ------------------------------------------------------------------------------
 # 2. Rutina de Auto-Actualización Segura (Descarga a archivo, sin irm | iex)
 # ------------------------------------------------------------------------------
-$CurrentVersion  = "1.2.5"
+$CurrentVersion  = "1.2.6"
 $UpdateScriptUrl = "https://raw.githubusercontent.com/TrOgI10/MadisaTelemetry/refs/heads/main/agent/agent-snapshot.ps1"
 
 try {
@@ -154,18 +202,32 @@ try {
     }
     if ([string]::IsNullOrWhiteSpace($localIp)) { $localIp = "No disponible" }
 
-    # Obtención de IP Pública
+    # --------------------------------------------------------------------------
+    # Obtención de IP Pública Robusta (Con fallback y TLS 1.2)
+    # --------------------------------------------------------------------------
     $publicIp = "No disponible"
-    try {
-        $wcIp = New-Object System.Net.WebClient
-        $wcIp.Headers.Add("User-Agent", "MadisaTelemetryAgent")
-        # Servicio rápido de texto plano con timeout implícito
-        $publicIp = ($wcIp.DownloadString("https://api.ipify.org")).Trim()
-    } catch {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+
+    $ipEndpoints = @(
+        "https://api.ipify.org",
+        "https://icanhazip.com",
+        "https://ident.me"
+    )
+
+    foreach ($endpoint in $ipEndpoints) {
         try {
-            $publicIp = ((Invoke-RestMethod -Uri "https://ifconfig.me/ip" -TimeoutSec 3 -ErrorAction Stop)).Trim()
+            $wcIp = New-Object System.Net.WebClient
+            $wcIp.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+            $wcIp.Headers.Add("Cache-Control", "no-cache")
+            
+            $res = ($wcIp.DownloadString($endpoint)).Trim()
+            # Validar formato IPv4 con Regex
+            if ($res -match '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$') {
+                $publicIp = $res
+                break
+            }
         } catch {
-            $publicIp = "No disponible"
+            # Si falla un servicio, prueba el siguiente de la lista
         }
     }
 
