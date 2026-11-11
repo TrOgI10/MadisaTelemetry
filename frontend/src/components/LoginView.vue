@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth'
 import { auth } from '../firebase'
+import ThemeToggle from './ThemeToggle.vue'
 
 const email = ref('')
 const password = ref('')
@@ -50,70 +51,78 @@ const handleForgotPassword = async () => {
 </script>
 
 <template>
-  <div class="min-h-[100dvh] flex items-center justify-center bg-zinc-950 px-4 text-zinc-100">
-    <div class="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-8 shadow-2xl">
-      <!-- Cabecera -->
-      <div class="flex flex-col items-center mb-8">
-        <img src="/logoMadisaTelemetry.png" alt="Logo" class="w-16 h-16 mb-3 object-contain" />
-        <h1 class="text-xl font-bold tracking-wide">Madisa Telemetry Suite</h1>
-        <p class="text-sm text-zinc-400 mt-1">Acceso restringido a personal técnico</p>
+  <div class="min-h-[100dvh] flex items-center justify-center bg-[#f8fafc] dark:bg-slate-950 px-4 text-slate-800 dark:text-slate-100 transition-colors duration-200 relative">
+    
+    <!-- Botón de cambio de tema en esquina superior -->
+    <div class="absolute top-4 right-4">
+      <ThemeToggle />
+    </div>
+
+    <div class="w-full max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 shadow-xl">
+      <!-- Cabecera e Isotipo Corporativo -->
+      <div class="flex flex-col items-center mb-6">
+        <div class="w-14 h-14 rounded-full flex items-center justify-center shadow-md mb-3"
+             style="background: linear-gradient(135deg, #20398c 0%, #3b88c7 100%);">
+          <span class="text-white font-extrabold text-2xl tracking-tighter">M</span>
+        </div>
+        <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">Madisa Telemetry Suite</h1>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Acceso restringido a personal técnico</p>
       </div>
 
       <!-- Formulario -->
       <form @submit.prevent="handleLogin" class="space-y-4">
         <div>
-          <label class="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
             Correo corporativo
           </label>
-          <!-- Correo corporativo -->
-            <input 
-              v-model="email" 
-              type="email" 
-              required
-              autocomplete="email"
-              placeholder="tecnico@madisa.com"
-              class="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg focus:outline-none focus:border-cyan-500 text-zinc-100 placeholder-zinc-500 text-base transition-colors"
-            />
+          <input 
+            v-model="email" 
+            type="email" 
+            required
+            autocomplete="email"
+            placeholder="tecnico@madisa.com"
+            class="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:border-[#1976d2] text-slate-900 dark:text-slate-100 placeholder-slate-400 text-sm transition-colors"
+          />
         </div>
 
         <div>
-          <label class="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-2">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
             Contraseña
           </label>
-          <!-- Contraseña -->
-            <input 
-              v-model="password" 
-              type="password" 
-              required
-              autocomplete="current-password"
-              placeholder="••••••••"
-              class="w-full px-4 py-3 bg-zinc-950 border border-zinc-700 rounded-lg focus:outline-none focus:border-cyan-500 text-zinc-100 placeholder-zinc-500 text-base transition-colors"
-            />
+          <input 
+            v-model="password" 
+            type="password" 
+            required
+            autocomplete="current-password"
+            placeholder="••••••••"
+            class="w-full px-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:border-[#1976d2] text-slate-900 dark:text-slate-100 placeholder-slate-400 text-sm transition-colors"
+          />
         </div>
 
-        <!-- Enlace olvidé mi contraseña -->
         <div class="flex justify-end">
           <button 
             type="button" 
             @click="handleForgotPassword" 
-            class="text-xs text-zinc-400 hover:text-cyan-400 transition-colors"
+            class="text-xs text-slate-500 dark:text-slate-400 hover:text-[#1976d2] dark:hover:text-blue-400 transition-colors"
           >
             ¿Has olvidado tu contraseña?
           </button>
         </div>
 
         <!-- Mensajes -->
-        <div v-if="errorMsg" class="p-3 bg-red-950/50 border border-red-800/80 rounded-lg text-red-400 text-xs text-center font-medium">
+        <div v-if="errorMsg" class="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/80 rounded-lg text-rose-600 dark:text-rose-400 text-xs text-center font-medium">
           {{ errorMsg }}
         </div>
-        <div v-if="successMsg" class="p-3 bg-emerald-950/50 border border-emerald-800/80 rounded-lg text-emerald-400 text-xs text-center font-medium">
+        <div v-if="successMsg" class="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/80 rounded-lg text-emerald-600 dark:text-emerald-400 text-xs text-center font-medium">
           {{ successMsg }}
         </div>
 
+        <!-- Botón de Login Corporativo (#36618e) -->
         <button 
           type="submit" 
           :disabled="loading"
-          class="w-full py-3 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-semibold rounded-lg shadow-lg shadow-cyan-900/30 transition-all text-sm flex justify-center items-center mt-2"
+          class="w-full py-3 text-white font-semibold rounded-lg shadow-md transition-opacity hover:opacity-90 disabled:opacity-50 text-sm flex justify-center items-center mt-2"
+          style="background-color: #36618e;"
         >
           <span v-if="loading">Verificando...</span>
           <span v-else>Iniciar Sesión</span>

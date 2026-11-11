@@ -1,13 +1,20 @@
 @import "tailwindcss";
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* El fondo por defecto es el blanco/claro (#f8fafc), y cambia a oscuro (#09090b) cuando se activa la clase .dark */
 html,
 body {
-  background-color: #09090b; /* zinc-950 */
-  color: #f4f4f5;
+  background-color: #f8fafc;
+  color: #1e293b;
   width: 100%;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+html.dark,
+html.dark body {
+  background-color: #09090b;
+  color: #f4f4f5;
 }
 
 /* Ocultar barra de scroll global */
@@ -23,7 +30,6 @@ body {
 }
 
 body {
-  /* Mantenemos solo el margen inferior para el indicador de inicio de iOS */
   padding-bottom: env(safe-area-inset-bottom);
 }
 
