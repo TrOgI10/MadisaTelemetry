@@ -28,14 +28,13 @@ watch([isMobileMenuOpen, selectedTerminalForModal], ([drawerOpen, modalData]) =>
 // Filtros y datos
 const selectedDelegation = ref<string>('TODAS');
 const searchQuery = ref<string>('');
+const statusFilter = ref<'all' | 'optimal' | 'attention'>('all');
 const delegations = ['TODAS', 'PALMA', 'MADRID', 'BARCELONA', 'IBIZA'];
 
 const terminals = ref<TerminalTelemetry[]>([]);
 let unsubscribe: Unsubscribe | null = null;
 
 function evaluateStatus(system: any, timestampStr?: string): { status: HealthStatus; isOffline: boolean } {
-  let isOffline = false;
-
   if (timestampStr) {
     const lastUpdate = new Date(timestampStr).getTime();
     const now = Date.now();
@@ -91,12 +90,10 @@ onMounted(() => {
     if (user) {
       startTelemetryListener();
     } else {
-      // 1. Cancelar la conexión en tiempo real
       if (unsubscribe) {
         unsubscribe();
         unsubscribe = null;
       }
-      // 2. VACIA LA MEMORIA para que no quede rastro de los clientes
       terminals.value = [];
       selectedTerminalForModal.value = null;
     }
@@ -129,20 +126,56 @@ const handleLogout = async () => {
   await signOut(auth);
 };
 
-const filteredTerminals = computed(() => {
-  return terminals.value.filter((t) => {
-    const matchesDelegation =
-      selectedDelegation.value === 'TODAS' || t.delegation === selectedDelegation.value;
+const toggleStatusFilter = (target: 'optimal' | 'attention') => {
+  statusFilter.value = statusFilter.value === target ? 'all' : target;
+};
 
-    const query = searchQuery.value.toLowerCase().trim();
-    const matchesSearch =
-      query === '' ||
+// Terminales filtrados por delegación (alimenta los KPIs globales/por delegación)
+const delegationTerminals = computed(() => {
+  return terminals.value.filter((t) => {
+    return selectedDelegation.value === 'TODAS' || t.delegation === selectedDelegation.value;
+  });
+});
+
+// Listados separados reutilizando exactamente los mismos criterios
+const optimalTerminals = computed(() => {
+  return delegationTerminals.value.filter((t) => t.status === 'green' && !t.isOffline);
+});
+
+const attentionTerminals = computed(() => {
+  return delegationTerminals.value.filter((t) => t.status !== 'green' || t.isOffline);
+});
+
+const hasActiveSearch = computed(() => searchQuery.value.trim().length > 0);
+const shouldShowResults = computed(() => hasActiveSearch.value || statusFilter.value !== 'all');
+
+// Equipos a mostrar según el estado seleccionado y/o el buscador
+const filteredTerminals = computed(() => {
+  if (!shouldShowResults.value) return [];
+
+  let baseList = delegationTerminals.value;
+  if (statusFilter.value === 'optimal') {
+    baseList = optimalTerminals.value;
+  } else if (statusFilter.value === 'attention') {
+    baseList = attentionTerminals.value;
+  }
+
+  const query = searchQuery.value.toLowerCase().trim();
+  if (!query) return baseList;
+
+  return baseList.filter((t) => {
+    return (
       (t.client_name && t.client_name.toLowerCase().includes(query)) ||
       (t.client_id && t.client_id.toLowerCase().includes(query)) ||
-      (t.terminal_id && t.terminal_id.toLowerCase().includes(query));
-
-    return matchesDelegation && matchesSearch;
+      (t.terminal_id && t.terminal_id.toLowerCase().includes(query))
+    );
   });
+});
+
+const activeFilterLabel = computed(() => {
+  if (statusFilter.value === 'optimal') return 'Óptimos';
+  if (statusFilter.value === 'attention') return 'Atención Requerida';
+  return '';
 });
 </script>
 
@@ -163,10 +196,6 @@ const filteredTerminals = computed(() => {
       <div class="flex justify-between items-center pt-2 max-w-7xl mx-auto">
         <!-- Logo corporativo e Isotipo V1.2.6 -->
         <div class="flex items-center gap-3">
-          <!-- <div class="w-9 h-9 rounded-full flex items-center justify-center shadow-sm flex-shrink-0"
-               style="background: linear-gradient(135deg, #20398c 0%, #3b88c7 100%);">
-            <span class="text-white font-extrabold text-base tracking-tighter">M</span>
-          </div> -->
           <img src="./assets/madisaLogo.jpg" alt="Logo MADISA" class="w-9 h-9 flex-shrink-0 rounded-full object-cover"/>
           <div>
             <div class="flex items-center gap-2">
@@ -181,7 +210,6 @@ const filteredTerminals = computed(() => {
 
         <!-- MODO ESCRITORIO (>= 640px) -->
         <div class="hidden sm:flex items-center gap-3">
-          <!-- Selector de Modo Claro/Oscuro -->
           <ThemeToggle />
 
           <div class="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg">
@@ -284,7 +312,7 @@ const filteredTerminals = computed(() => {
 
     <!-- CONTENIDO PRINCIPAL -->
     <main class="max-w-7xl mx-auto pt-[calc(env(safe-area-inset-top)+4.75rem)] px-4 sm:px-6 lg:px-8 pb-10">
-      <!-- Encabezado con buscador y delegaciones -->
+      <!-- Encabezado y delegaciones -->
       <div class="flex flex-col md:flex-row md:items-center justify-between pb-6 border-b border-slate-200 dark:border-slate-800 gap-4">
         <div>
           <h1 class="text-2xl font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
@@ -294,64 +322,166 @@ const filteredTerminals = computed(() => {
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Supervisión en tiempo real de terminales TPV y servidores</p>
         </div>
 
-        <div class="flex flex-col sm:flex-row items-center gap-3">
-          <!-- Input de búsqueda -->
-          <div class="relative w-full sm:w-64">
-            <input
-              v-model="searchQuery"
-              type="text"
-              placeholder="Buscar por cliente o TPV..."
-              class="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-sm sm:text-xs rounded-lg px-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#1976d2] transition-colors shadow-sm"
-            />
-            <button
-              v-if="searchQuery"
-              @click="searchQuery = ''"
-              class="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-700 dark:hover:text-white"
-            >
-              ✕
-            </button>
-          </div>
-
-          <!-- Filtro de delegaciones estilo V1.2.6 (#1976d2) -->
-          <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1">
-            <button
-              v-for="del in delegations"
-              :key="del"
-              @click="selectedDelegation = del"
-              :class="[
-                'px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all whitespace-nowrap border',
-                selectedDelegation === del
-                  ? 'bg-[#1976d2] text-white border-[#1976d2] shadow-sm'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
-              ]"
-            >
-              {{ del }}
-            </button>
-          </div>
+        <!-- Filtro de delegaciones estilo V1.2.6 (#1976d2) -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full md:w-auto pb-1">
+          <button
+            v-for="del in delegations"
+            :key="del"
+            @click="selectedDelegation = del"
+            :class="[
+              'px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all whitespace-nowrap border',
+              selectedDelegation === del
+                ? 'bg-[#1976d2] text-white border-[#1976d2] shadow-sm'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+            ]"
+          >
+            {{ del }}
+          </button>
         </div>
       </div>
 
-      <!-- Tarjetas de resumen (KPIs) -->
+      <!-- Tarjetas de resumen interactivas (KPIs) -->
       <section class="grid grid-cols-3 gap-4 my-6">
-        <div class="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 text-center shadow-sm">
-          <span class="text-xs text-slate-500 dark:text-slate-400 block font-medium">Total Mostrados</span>
-          <span class="text-2xl font-bold text-slate-900 dark:text-white">{{ filteredTerminals.length }}</span>
-        </div>
-        <div class="p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-800/40 text-center text-emerald-700 dark:text-emerald-400 shadow-sm">
+        <button
+          type="button"
+          @click="statusFilter = 'all'"
+          :class="[
+            'p-4 bg-white dark:bg-slate-900 rounded-xl border text-center shadow-sm transition-all cursor-pointer focus:outline-none',
+            statusFilter === 'all'
+              ? 'border-slate-300 dark:border-slate-700'
+              : 'border-slate-200 dark:border-slate-800 opacity-75 hover:opacity-100'
+          ]"
+        >
+          <span class="text-xs text-slate-500 dark:text-slate-400 block font-medium">Total Registrados</span>
+          <span class="text-2xl font-bold text-slate-900 dark:text-white">{{ delegationTerminals.length }}</span>
+        </button>
+
+        <button
+          type="button"
+          @click="toggleStatusFilter('optimal')"
+          :aria-pressed="statusFilter === 'optimal'"
+          :class="[
+            'p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-xl border text-center text-emerald-700 dark:text-emerald-400 shadow-sm transition-all cursor-pointer active:scale-[0.99] focus:outline-none',
+            statusFilter === 'optimal'
+              ? 'border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/30 shadow-md'
+              : 'border-emerald-200 dark:border-emerald-800/40 hover:border-emerald-400 dark:hover:border-emerald-700'
+          ]"
+        >
           <span class="text-xs opacity-80 block font-medium">Óptimos</span>
-          <span class="text-2xl font-bold">{{ filteredTerminals.filter(t => t.status === 'green' && !t.isOffline).length }}</span>
-        </div>
-        <div class="p-4 bg-rose-50 dark:bg-rose-950/20 rounded-xl border border-rose-200 dark:border-rose-800/40 text-center text-rose-700 dark:text-rose-400 shadow-sm">
+          <span class="text-2xl font-bold">{{ optimalTerminals.length }}</span>
+          <span class="text-[10px] font-semibold uppercase tracking-wider mt-1 block opacity-75">
+            {{ statusFilter === 'optimal' ? 'Viendo listado' : 'Ver equipos' }}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          @click="toggleStatusFilter('attention')"
+          :aria-pressed="statusFilter === 'attention'"
+          :class="[
+            'p-4 bg-rose-50 dark:bg-rose-950/20 rounded-xl border text-center text-rose-700 dark:text-rose-400 shadow-sm transition-all cursor-pointer active:scale-[0.99] focus:outline-none',
+            statusFilter === 'attention'
+              ? 'border-rose-500 dark:border-rose-500 ring-2 ring-rose-500/30 shadow-md'
+              : 'border-rose-200 dark:border-rose-800/40 hover:border-rose-400 dark:hover:border-rose-700'
+          ]"
+        >
           <span class="text-xs opacity-80 block font-medium">Atención Requerida</span>
-          <span class="text-2xl font-bold">{{ filteredTerminals.filter(t => t.status !== 'green' || t.isOffline).length }}</span>
+          <span class="text-2xl font-bold">{{ attentionTerminals.length }}</span>
+          <span class="text-[10px] font-semibold uppercase tracking-wider mt-1 block opacity-75">
+            {{ statusFilter === 'attention' ? 'Viendo listado' : 'Ver equipos' }}
+          </span>
+        </button>
+      </section>
+
+      <!-- BUSCADOR PRINCIPAL DE CLIENTES -->
+      <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm mb-6">
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <label for="client-search" class="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Consulta de Equipos por Cliente
+          </label>
+
+          <!-- Indicador de filtro de estado activo -->
+          <div v-if="statusFilter !== 'all'" class="flex items-center gap-2">
+            <span
+              class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border"
+              :class="statusFilter === 'optimal'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'"
+            >
+              <span
+                class="w-1.5 h-1.5 rounded-full"
+                :class="statusFilter === 'optimal' ? 'bg-emerald-500' : 'bg-rose-500'"
+              ></span>
+              Filtro: {{ activeFilterLabel }}
+            </span>
+            <button
+              type="button"
+              @click="statusFilter = 'all'"
+              class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-white underline"
+            >
+              Quitar filtro
+            </button>
+          </div>
+        </div>
+
+        <div class="relative">
+          <svg class="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+          <input
+            id="client-search"
+            v-model="searchQuery"
+            type="text"
+            placeholder="Escribe el nombre del cliente, código (ej. A9C...) o ID de terminal..."
+            class="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-sm rounded-xl pl-11 pr-10 py-3 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:border-[#1976d2] focus:ring-2 focus:ring-[#1976d2]/15 transition-all"
+          />
+          <button
+            v-if="searchQuery"
+            @click="searchQuery = ''"
+            type="button"
+            aria-label="Limpiar búsqueda"
+            class="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div v-if="shouldShowResults" class="mt-3 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+          <span>
+            Mostrando <strong class="text-slate-800 dark:text-slate-200">{{ filteredTerminals.length }}</strong>
+            {{ filteredTerminals.length === 1 ? 'equipo' : 'equipos' }}
+            <template v-if="statusFilter !== 'all'"> en estado <strong>{{ activeFilterLabel }}</strong></template>
+            <template v-if="selectedDelegation !== 'TODAS'"> ({{ selectedDelegation }})</template>
+          </span>
         </div>
       </section>
 
-      <!-- Rejilla de terminales -->
-      <section class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        <div v-if="filteredTerminals.length === 0" class="col-span-full text-center py-16 text-slate-400 dark:text-slate-500 text-sm">
-          No se encontraron terminales para los filtros seleccionados.
+      <!-- RESULTADOS DE BÚSQUEDA O FILTRO DE ESTADO -->
+      <section v-if="!shouldShowResults" class="text-center py-14 px-4 bg-white/60 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-300 dark:border-slate-800">
+        <div class="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/60 text-[#1976d2] dark:text-blue-400 flex items-center justify-center mx-auto mb-3 border border-blue-200/60 dark:border-blue-800/60">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
         </div>
+        <h2 class="text-sm font-bold text-slate-800 dark:text-slate-200">Busca un cliente o selecciona un estado</h2>
+        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+          Introduce el nombre comercial o código de cliente en el buscador superior, o haz clic en <strong>Óptimos</strong> / <strong>Atención Requerida</strong> para listar sus equipos.
+        </p>
+      </section>
+
+      <section v-else-if="filteredTerminals.length === 0" class="text-center py-14 px-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-500 text-sm">
+        <template v-if="hasActiveSearch">
+          No se encontraron equipos para "<span class="font-semibold text-slate-600 dark:text-slate-300">{{ searchQuery }}</span>"
+          <template v-if="statusFilter !== 'all'"> en estado {{ activeFilterLabel }}</template>
+          <template v-if="selectedDelegation !== 'TODAS'"> ({{ selectedDelegation }})</template>.
+        </template>
+        <template v-else>
+          No hay equipos disponibles en estado <span class="font-semibold text-slate-600 dark:text-slate-300">{{ activeFilterLabel }}</span>
+          <template v-if="selectedDelegation !== 'TODAS'"> en {{ selectedDelegation }}</template>.
+        </template>
+      </section>
+
+      <section v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <TerminalCard
           v-for="terminal in filteredTerminals"
           :key="terminal.client_id + '_' + terminal.terminal_id"
@@ -361,7 +491,7 @@ const filteredTerminals = computed(() => {
       </section>
     </main>
 
-    <!-- MODAL DE DETALLE -->
+    <!-- MODAL DE DETALLE COMPLETO DEL EQUIPO -->
     <Teleport to="body">
       <transition
         enter-active-class="transition duration-200 ease-out"
@@ -379,11 +509,11 @@ const filteredTerminals = computed(() => {
           <div class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl relative max-h-[90dvh] overflow-y-auto no-scrollbar">
             
             <!-- Cabecera del modal -->
-            <div class="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+            <div class="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-4 gap-3">
               <div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                   <span 
-                    class="w-2.5 h-2.5 rounded-full"
+                    class="w-2.5 h-2.5 rounded-full shrink-0"
                     :class="{
                       'bg-emerald-500': selectedTerminalForModal.status === 'green' && !selectedTerminalForModal.isOffline,
                       'bg-amber-500': selectedTerminalForModal.status === 'amber' && !selectedTerminalForModal.isOffline,
@@ -391,14 +521,22 @@ const filteredTerminals = computed(() => {
                     }"
                   ></span>
                   <h3 class="text-lg font-bold text-slate-900 dark:text-white">{{ selectedTerminalForModal.client_name }}</h3>
+                  <span 
+                    v-if="selectedTerminalForModal.isOffline" 
+                    class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 uppercase animate-pulse"
+                  >
+                    Offline
+                  </span>
                 </div>
-                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {{ selectedTerminalForModal.client_id }} · {{ selectedTerminalForModal.delegation }} · Terminal: {{ selectedTerminalForModal.terminal_id }}
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  {{ selectedTerminalForModal.client_id }} · {{ selectedTerminalForModal.delegation }} · Terminal:
+                  <span class="font-mono font-bold text-[#1976d2] dark:text-blue-400">{{ selectedTerminalForModal.terminal_id }}</span>
                 </p>
               </div>
               <button 
                 @click="selectedTerminalForModal = null"
-                class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors"
+                aria-label="Cerrar modal"
+                class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors shrink-0"
               >
                 ✕
               </button>
@@ -410,6 +548,74 @@ const filteredTerminals = computed(() => {
               class="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2"
             >
               <span class="font-bold">⚠️ Sin respuesta:</span> El TPV no emite telemetría desde hace más de 15 minutos (apagado o sin conexión a internet).
+            </div>
+
+            <!-- Métricas de Hardware y Servicio -->
+            <div class="mt-4 grid grid-cols-2 gap-2.5 text-xs">
+              <div class="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-700/60">
+                <span class="text-[10px] text-slate-400 uppercase font-semibold block">CPU</span>
+                <span class="font-mono text-base font-bold text-slate-800 dark:text-white">
+                  {{ selectedTerminalForModal.system.cpu_usage_percent }}%
+                </span>
+              </div>
+
+              <div class="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-700/60">
+                <span class="text-[10px] text-slate-400 uppercase font-semibold block">RAM</span>
+                <span class="font-mono text-base font-bold text-slate-800 dark:text-white">
+                  {{ selectedTerminalForModal.system.ram_usage_percent ?? Math.round((selectedTerminalForModal.system.ram_used_gb / selectedTerminalForModal.system.ram_total_gb) * 100) }}%
+                </span>
+                <span class="text-[11px] text-slate-400 block truncate">
+                  {{ selectedTerminalForModal.system.ram_used_gb }}/{{ selectedTerminalForModal.system.ram_total_gb }} GB
+                </span>
+              </div>
+
+              <div class="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-700/60">
+                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Disco C: Libre</span>
+                <span class="font-mono text-base font-bold text-slate-800 dark:text-white">
+                  {{ selectedTerminalForModal.system.disk_c_percent_free }}%
+                </span>
+                <span class="text-[11px] text-slate-400 block truncate">
+                  {{ selectedTerminalForModal.system.disk_c_free_gb !== undefined ? `${selectedTerminalForModal.system.disk_c_free_gb} GB` : 'N/A' }}
+                </span>
+              </div>
+
+              <div class="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-700/60">
+                <span class="text-[10px] text-slate-400 uppercase font-semibold block">SQL Server</span>
+                <span
+                  :class="[
+                    'font-mono text-base font-bold',
+                    selectedTerminalForModal.system.sql_service_status === 'Running'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                  ]"
+                >
+                  {{ selectedTerminalForModal.system.sql_service_status }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Estado de actividad y hora del último reporte -->
+            <div class="mt-3 bg-slate-50 dark:bg-slate-800/40 px-3.5 py-2.5 rounded-xl border border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <div class="flex items-center gap-1.5">
+                <span
+                  class="inline-block w-2 h-2 rounded-full"
+                  :class="{
+                    'bg-emerald-500': selectedTerminalForModal.status === 'green' && !selectedTerminalForModal.isOffline,
+                    'bg-amber-500': selectedTerminalForModal.status === 'amber' && !selectedTerminalForModal.isOffline,
+                    'bg-rose-500 animate-pulse': selectedTerminalForModal.status === 'red' || selectedTerminalForModal.isOffline
+                  }"
+                ></span>
+                <span>Activo:</span>
+                <strong class="font-mono text-slate-700 dark:text-slate-200">
+                  {{ selectedTerminalForModal.system.uptime_human || selectedTerminalForModal.system.uptime_formatted || 'Desconocido' }}
+                </strong>
+              </div>
+              <span>
+                Último reporte:
+                <strong class="font-mono text-slate-700 dark:text-slate-200">
+                  {{ selectedTerminalForModal.timestamp ? new Date(selectedTerminalForModal.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A' }}
+                </strong>
+              </span>
             </div>
 
             <!-- Red: IP Privada y Pública lado a lado -->
