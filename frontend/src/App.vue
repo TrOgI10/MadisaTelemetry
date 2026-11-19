@@ -161,20 +161,21 @@ const filteredTerminals = computed(() => {
     <!-- BARRA SUPERIOR FIJA -->
     <header class="fixed top-0 left-0 right-0 w-full pt-[env(safe-area-inset-top)] px-4 sm:px-6 pb-3 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-30 transition-colors duration-200 shadow-sm">
       <div class="flex justify-between items-center pt-2 max-w-7xl mx-auto">
-        <!-- Logo corporativo e Isotipo V3.0 -->
+        <!-- Logo corporativo e Isotipo V1.2.6 -->
         <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-full flex items-center justify-center shadow-sm flex-shrink-0"
+          <!-- <div class="w-9 h-9 rounded-full flex items-center justify-center shadow-sm flex-shrink-0"
                style="background: linear-gradient(135deg, #20398c 0%, #3b88c7 100%);">
             <span class="text-white font-extrabold text-base tracking-tighter">M</span>
-          </div>
+          </div> -->
+          <img src="./assets/madisaLogo.jpg" alt="Logo MADISA" class="w-9 h-9 flex-shrink-0 rounded-full object-cover"/>
           <div>
             <div class="flex items-center gap-2">
               <span class="font-bold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight">MADISA</span>
               <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-[#1976d2] dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50">
-                v3.0
+                v1.2.6
               </span>
             </div>
-            <p class="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-none hidden sm:block">Full Retail Control</p>
+            <p class="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-none hidden sm:block">Telemetry Control</p>
           </div>
         </div>
 
@@ -311,7 +312,7 @@ const filteredTerminals = computed(() => {
             </button>
           </div>
 
-          <!-- Filtro de delegaciones estilo V3.0 (#1976d2) -->
+          <!-- Filtro de delegaciones estilo V1.2.6 (#1976d2) -->
           <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full sm:w-auto pb-1">
             <button
               v-for="del in delegations"

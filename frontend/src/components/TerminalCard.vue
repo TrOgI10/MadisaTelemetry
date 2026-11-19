@@ -16,7 +16,7 @@ const statusCardClasses = computed(() => {
   }
   switch (props.terminal.status) {
     case 'green': 
-      return 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-[#1976d2]';
+      return 'border-emerald-300 dark:border-emerald-900 bg-emerald-50/40 dark:bg-emerald-950/20 hover:border-emerald-400';
     case 'amber': 
       return 'border-amber-300 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/20 hover:border-amber-400';
     case 'red': 
