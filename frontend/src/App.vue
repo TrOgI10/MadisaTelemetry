@@ -34,35 +34,83 @@ const delegations = ['TODAS', 'PALMA', 'MADRID', 'BARCELONA', 'IBIZA'];
 const terminals = ref<TerminalTelemetry[]>([]);
 let unsubscribe: Unsubscribe | null = null;
 
-function evaluateStatus(system: any, timestampStr?: string): { status: HealthStatus; isOffline: boolean } {
-  if (timestampStr) {
-    const lastUpdate = new Date(timestampStr).getTime();
-    const now = Date.now();
-    const diffMinutes = (now - lastUpdate) / (1000 * 60);
+// --- Añadir junto a las variables reactivas en <script setup lang="ts"> ---
+const clockSkewDetected = ref(false);
+let reevalInterval: number | null = null;
+
+// Normaliza string ISO, número epoch o Firestore Timestamp a milisegundos UTC
+function parseTimestampMs(rawTimestamp: any): number | null {
+  if (!rawTimestamp) return null;
+  if (typeof rawTimestamp === 'number') return rawTimestamp;
+  if (typeof rawTimestamp?.toMillis === 'function') return rawTimestamp.toMillis();
+  if (typeof rawTimestamp === 'string') {
+    const parsed = Date.parse(rawTimestamp);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+// Lógica de cálculo de semáforo blindada
+function evaluateStatus(system: any, rawTimestamp?: any): { status: HealthStatus; isOffline: boolean; lastUpdateMs: number | null } {
+  const lastUpdateMs = parseTimestampMs(rawTimestamp);
+
+  // 1. Regla de desconexión: > 15 minutos desde el último reporte
+  if (lastUpdateMs !== null) {
+    const diffMinutes = (Date.now() - lastUpdateMs) / (1000 * 60);
 
     if (diffMinutes > 15) {
-      return { status: 'red', isOffline: true };
+      return { status: 'red', isOffline: true, lastUpdateMs };
     }
   }
 
-  if (!system) return { status: 'red', isOffline: false };
+  // 2. Reglas de salud del sistema
+  if (!system) return { status: 'red', isOffline: false, lastUpdateMs };
   if (system.sql_service_status !== 'Running' && system.sql_service_status !== 'NotInstalled') {
-    return { status: 'red', isOffline: false };
+    return { status: 'red', isOffline: false, lastUpdateMs };
   }
-  if (system.disk_c_percent_free < 5) return { status: 'red', isOffline: false };
+  if (system.disk_c_percent_free < 5) return { status: 'red', isOffline: false, lastUpdateMs };
   if (system.disk_c_percent_free <= 15 || system.cpu_usage_percent > 85) {
-    return { status: 'amber', isOffline: false };
+    return { status: 'amber', isOffline: false, lastUpdateMs };
   }
 
-  return { status: 'green', isOffline: false };
+  return { status: 'green', isOffline: false, lastUpdateMs };
+}
+
+// Comprueba si el 100% de los equipos parecen Offline por desfase del reloj del portátil cliente
+function checkClientClockSkew(list: TerminalTelemetry[]) {
+  if (list.length < 2) {
+    clockSkewDetected.value = false;
+    return;
+  }
+  const allOffline = list.every(t => t.isOffline);
+  if (!allOffline) {
+    clockSkewDetected.value = false;
+    return;
+  }
+
+  // Si todos están offline pero sus reportes son recientes entre sí (< 20 min de diferencia entre el más nuevo y el más antiguo)
+  const timestamps = list
+    .map(t => parseTimestampMs(t.timestamp))
+    .filter((ms): ms is number => ms !== null);
+
+  if (timestamps.length >= 2) {
+    const newest = Math.max(...timestamps);
+    const oldest = Math.min(...timestamps);
+    const spreadMinutes = (newest - oldest) / (1000 * 60);
+    clockSkewDetected.value = spreadMinutes <= 20;
+  } else {
+    clockSkewDetected.value = false;
+  }
 }
 
 function startTelemetryListener() {
   const terminalsCol = collection(db, 'terminals');
   unsubscribe = onSnapshot(terminalsCol, (snapshot) => {
-    terminals.value = snapshot.docs.map((docSnap) => {
+    const mapped = snapshot.docs.map((docSnap) => {
       const data = docSnap.data();
-      const evaluation = evaluateStatus(data.system, data.timestamp);
+      // Soporta tanto timestamp como last_seen por compatibilidad
+      const rawTime = data.timestamp || data.last_seen;
+      const evaluation = evaluateStatus(data.system, rawTime);
 
       return {
         id: docSnap.id,
@@ -71,12 +119,15 @@ function startTelemetryListener() {
         delegation: data.delegation,
         zone: data.zone,
         terminal_id: data.terminal_id,
-        timestamp: data.timestamp,
+        timestamp: rawTime,
         system: data.system,
         status: evaluation.status,
         isOffline: evaluation.isOffline
       } as TerminalTelemetry;
     });
+
+    terminals.value = mapped;
+    checkClientClockSkew(mapped);
   }, (error) => {
     console.error("Error al escuchar Firestore:", error);
   });
@@ -330,6 +381,16 @@ const activeFilterLabel = computed(() => {
             Madisa Telemetry Suite
           </h1>
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Supervisión en tiempo real de terminales TPV y servidores</p>
+        </div>
+        <!-- Aviso automático si el reloj del portátil cliente está adelantado/desfasado -->
+        <div 
+          v-if="clockSkewDetected" 
+          class="mt-4 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between gap-3"
+        >
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm">🕒 Reloj del equipo desfasado:</span>
+            <span>Todos los terminales figuran como Offline porque la hora o zona horaria de este ordenador está adelantada respecto a la hora real. Activa la sincronización automática de hora en Windows.</span>
+          </div>
         </div>
 
         <!-- Filtro de delegaciones estilo V1.2.6 (#1976d2) -->
