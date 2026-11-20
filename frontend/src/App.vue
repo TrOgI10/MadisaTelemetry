@@ -681,7 +681,7 @@ const activeFilterLabel = computed(() => {
               v-if="selectedTerminalForModal.isOffline" 
               class="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2"
             >
-              <span class="font-bold">⚠️ Sin respuesta:</span> El TPV no emite telemetría desde hace más de 15 minutos (apagado o sin conexión a internet).
+              <span class="font-bold">⚠️ Sin respuesta:</span> El TPV no emite telemetría desde hace más de 15 minutos (apagado o sin conexion a internet).
             </div>
 
             <!-- Aviso de desfase horario en el modal -->

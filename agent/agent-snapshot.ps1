@@ -86,8 +86,8 @@ function Get-LastShutdownInfo {
                 }
                 elseif ($procName -match "wininit\.exe|explorer\.exe|shutdown\.exe|RuntimeBroker\.exe") {
                     $result.category = "manual_user"
-                    $result.label    = if ($isRestart) { "Reinicio manual / Botón" } else { "Apagado manual / Botón" }
-                    $result.detail   = if ($userName) { "Iniciado manualmente ($userName)." } else { "Iniciado manualmente desde Windows o botón de encendido." }
+                    $result.label    = if ($isRestart) { "Reinicio manual / Boton" } else { "Apagado manual / Boton" }
+                    $result.detail   = if ($userName) { "Iniciado manualmente ($userName)." } else { "Iniciado manualmente desde Windows o Boton de encendido." }
                 }
                 else {
                     $result.category = "software_planned"
