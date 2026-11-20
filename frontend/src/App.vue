@@ -208,7 +208,7 @@ const activeFilterLabel = computed(() => {
           </div>
         </div>
 
-        <!-- MODO ESCRITORIO (>= 640px) -->
+        <!-- MODO ESCRITORIO (>= 640px): Sin cambios -->
         <div class="hidden sm:flex items-center gap-3">
           <ThemeToggle />
 
@@ -226,9 +226,8 @@ const activeFilterLabel = computed(() => {
           </button>
         </div>
 
-        <!-- MODO MÓVIL (< 640px) -->
-        <div class="flex sm:hidden items-center gap-2">
-          <ThemeToggle />
+        <!-- MODO MÓVIL (< 640px): Solo botón hamburguesa -->
+        <div class="flex sm:hidden items-center">
           <button 
             @click="isMobileMenuOpen = true"
             type="button"
@@ -273,9 +272,10 @@ const activeFilterLabel = computed(() => {
           >
             <div>
               <div class="flex items-center justify-between pb-4 border-b border-slate-200 dark:border-slate-800">
-                <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Usuario Activo</span>
+                <span class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Menú</span>
                 <button 
                   @click="isMobileMenuOpen = false"
+                  aria-label="Cerrar menú"
                   class="p-2 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white"
                 >
                   <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -284,11 +284,21 @@ const activeFilterLabel = computed(() => {
                 </button>
               </div>
 
+              <!-- Usuario activo -->
               <div class="mt-6 flex flex-col gap-2">
                 <span class="text-[11px] text-slate-400 font-medium">Técnico</span>
                 <div class="flex items-center gap-2.5 text-xs text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
                   <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse"></span>
                   <span class="truncate font-semibold">{{ currentUser?.email }}</span>
+                </div>
+              </div>
+
+              <!-- Selector de modo claro/oscuro reubicado en móvil -->
+              <div class="mt-6 flex flex-col gap-2">
+                <span class="text-[11px] text-slate-400 font-medium">Apariencia</span>
+                <div class="flex items-center justify-between bg-slate-100 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <span class="text-xs font-medium text-slate-700 dark:text-slate-300">Tema</span>
+                  <ThemeToggle />
                 </div>
               </div>
             </div>
@@ -340,89 +350,83 @@ const activeFilterLabel = computed(() => {
         </div>
       </div>
 
-      <!-- Tarjetas de resumen interactivas (KPIs) -->
-      <section class="grid grid-cols-3 gap-4 my-6">
+      <!-- Tarjetas de resumen interactivas (Estructura común, misma altura y números perfectamente alineados) -->
+      <section class="grid grid-cols-3 gap-2.5 sm:gap-4 my-6 items-stretch">
+        <!-- Total Registrados (Restablece vista general y quita cualquier filtro de estado) -->
         <button
           type="button"
           @click="statusFilter = 'all'"
+          :aria-pressed="statusFilter === 'all'"
           :class="[
-            'p-4 bg-white dark:bg-slate-900 rounded-xl border text-center shadow-sm transition-all cursor-pointer focus:outline-none',
+            'box-border h-full flex flex-col items-center justify-between p-3 sm:p-4 rounded-xl border text-center shadow-sm transition-colors duration-150 cursor-pointer focus:outline-none',
             statusFilter === 'all'
-              ? 'border-slate-300 dark:border-slate-700'
-              : 'border-slate-200 dark:border-slate-800 opacity-75 hover:opacity-100'
+              ? 'bg-white dark:bg-slate-900 border-[#1976d2] dark:border-blue-500 ring-2 ring-[#1976d2]/25'
+              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
           ]"
         >
-          <span class="text-xs text-slate-500 dark:text-slate-400 block font-medium">Total Registrados</span>
-          <span class="text-2xl font-bold text-slate-900 dark:text-white">{{ delegationTerminals.length }}</span>
+          <span class="h-8 sm:h-5 flex items-center justify-center text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium leading-tight">
+            Total Registrados
+          </span>
+          <span class="text-2xl font-bold leading-none my-2 text-slate-900 dark:text-white">
+            {{ delegationTerminals.length }}
+          </span>
+          <span class="h-7 sm:h-4 flex items-center justify-center text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider leading-tight text-slate-400 dark:text-slate-500">
+            {{ statusFilter === 'all' ? 'Vista general' : 'Mostrar todos' }}
+          </span>
         </button>
 
+        <!-- Óptimos -->
         <button
           type="button"
           @click="toggleStatusFilter('optimal')"
           :aria-pressed="statusFilter === 'optimal'"
           :class="[
-            'p-4 bg-emerald-50 dark:bg-emerald-950/20 rounded-xl border text-center text-emerald-700 dark:text-emerald-400 shadow-sm transition-all cursor-pointer active:scale-[0.99] focus:outline-none',
+            'box-border h-full flex flex-col items-center justify-between p-3 sm:p-4 rounded-xl border text-center text-emerald-700 dark:text-emerald-400 shadow-sm transition-colors duration-150 cursor-pointer focus:outline-none',
             statusFilter === 'optimal'
-              ? 'border-emerald-500 dark:border-emerald-500 ring-2 ring-emerald-500/30 shadow-md'
-              : 'border-emerald-200 dark:border-emerald-800/40 hover:border-emerald-400 dark:hover:border-emerald-700'
+              ? 'bg-emerald-100/70 dark:bg-emerald-950/50 border-emerald-500 dark:border-emerald-400 ring-2 ring-emerald-500/30'
+              : 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/40 hover:border-emerald-400 dark:hover:border-emerald-700'
           ]"
         >
-          <span class="text-xs opacity-80 block font-medium">Óptimos</span>
-          <span class="text-2xl font-bold">{{ optimalTerminals.length }}</span>
-          <span class="text-[10px] font-semibold uppercase tracking-wider mt-1 block opacity-75">
+          <span class="h-8 sm:h-5 flex items-center justify-center text-[11px] sm:text-xs opacity-90 font-medium leading-tight">
+            Óptimos
+          </span>
+          <span class="text-2xl font-bold leading-none my-2">
+            {{ optimalTerminals.length }}
+          </span>
+          <span class="h-7 sm:h-4 flex items-center justify-center text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider leading-tight opacity-80">
             {{ statusFilter === 'optimal' ? 'Viendo listado' : 'Ver equipos' }}
           </span>
         </button>
 
+        <!-- Atención Requerida -->
         <button
           type="button"
           @click="toggleStatusFilter('attention')"
           :aria-pressed="statusFilter === 'attention'"
           :class="[
-            'p-4 bg-rose-50 dark:bg-rose-950/20 rounded-xl border text-center text-rose-700 dark:text-rose-400 shadow-sm transition-all cursor-pointer active:scale-[0.99] focus:outline-none',
+            'box-border h-full flex flex-col items-center justify-between p-3 sm:p-4 rounded-xl border text-center text-rose-700 dark:text-rose-400 shadow-sm transition-colors duration-150 cursor-pointer focus:outline-none',
             statusFilter === 'attention'
-              ? 'border-rose-500 dark:border-rose-500 ring-2 ring-rose-500/30 shadow-md'
-              : 'border-rose-200 dark:border-rose-800/40 hover:border-rose-400 dark:hover:border-rose-700'
+              ? 'bg-rose-100/70 dark:bg-rose-950/50 border-rose-500 dark:border-rose-400 ring-2 ring-rose-500/30'
+              : 'bg-rose-50 dark:bg-rose-950/20 border-rose-200 dark:border-rose-800/40 hover:border-rose-400 dark:hover:border-rose-700'
           ]"
         >
-          <span class="text-xs opacity-80 block font-medium">Atención Requerida</span>
-          <span class="text-2xl font-bold">{{ attentionTerminals.length }}</span>
-          <span class="text-[10px] font-semibold uppercase tracking-wider mt-1 block opacity-75">
+          <span class="h-8 sm:h-5 flex items-center justify-center text-[11px] sm:text-xs opacity-90 font-medium leading-tight">
+            Atención Requerida
+          </span>
+          <span class="text-2xl font-bold leading-none my-2">
+            {{ attentionTerminals.length }}
+          </span>
+          <span class="h-7 sm:h-4 flex items-center justify-center text-[9px] sm:text-[10px] font-semibold uppercase tracking-wider leading-tight opacity-80">
             {{ statusFilter === 'attention' ? 'Viendo listado' : 'Ver equipos' }}
           </span>
         </button>
       </section>
 
-      <!-- BUSCADOR PRINCIPAL DE CLIENTES -->
+      <!-- BUSCADOR PRINCIPAL DE CLIENTES (Sin etiquetas ni botones extra que alteren su diseño) -->
       <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm mb-6">
-        <div class="flex items-center justify-between gap-2 mb-2">
-          <label for="client-search" class="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Consulta de Equipos por Cliente
-          </label>
-
-          <!-- Indicador de filtro de estado activo -->
-          <div v-if="statusFilter !== 'all'" class="flex items-center gap-2">
-            <span
-              class="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border"
-              :class="statusFilter === 'optimal'
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'"
-            >
-              <span
-                class="w-1.5 h-1.5 rounded-full"
-                :class="statusFilter === 'optimal' ? 'bg-emerald-500' : 'bg-rose-500'"
-              ></span>
-              Filtro: {{ activeFilterLabel }}
-            </span>
-            <button
-              type="button"
-              @click="statusFilter = 'all'"
-              class="text-xs text-slate-400 hover:text-slate-700 dark:hover:text-white underline"
-            >
-              Quitar filtro
-            </button>
-          </div>
-        </div>
+        <label for="client-search" class="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+          Consulta de Equipos por Cliente
+        </label>
 
         <div class="relative">
           <svg class="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -533,12 +537,15 @@ const activeFilterLabel = computed(() => {
                   <span class="font-mono font-bold text-[#1976d2] dark:text-blue-400">{{ selectedTerminalForModal.terminal_id }}</span>
                 </p>
               </div>
-              <button 
+              <button
+                type="button"
                 @click="selectedTerminalForModal = null"
                 aria-label="Cerrar modal"
-                class="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-white transition-colors shrink-0"
+                class="w-9 h-9 inline-flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white border border-slate-200/70 dark:border-slate-700/70 transition-colors shrink-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#1976d2]/30"
               >
-                ✕
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
