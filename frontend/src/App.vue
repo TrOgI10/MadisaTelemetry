@@ -6,7 +6,7 @@ import { db, auth } from "./firebase";
 import TerminalCard from './components/TerminalCard.vue';
 import LoginView from './components/LoginView.vue';
 import ThemeToggle from './components/ThemeToggle.vue';
-import type { TerminalTelemetry, HealthStatus } from './types/telemetry';
+import type { TerminalTelemetry, HealthStatus, LastShutdownInfo } from './types/telemetry';
 
 // Control de sesión y autenticación
 const currentUser = ref<User | null>(null);
@@ -63,6 +63,21 @@ function detectClientClockSkew(rawTimestamp: any, referenceNowMs: number): boole
   const reportMs = parseTimestampMs(rawTimestamp);
   if (reportMs === null) return false;
   return Math.abs(reportMs - referenceNowMs) > CLOCK_SKEW_THRESHOLD_MS;
+}
+
+// Normaliza de forma segura el motivo del último apagado/reinicio registrado en Windows
+function normalizeLastShutdown(system: any): LastShutdownInfo | null {
+  const raw = system?.last_shutdown;
+  if (!raw || typeof raw !== 'object' || !raw.label || raw.category === 'unknown') {
+    return null;
+  }
+  return {
+    event_id: raw.event_id ?? null,
+    category: raw.category ?? 'unknown',
+    label: String(raw.label),
+    detail: raw.detail ? String(raw.detail) : '',
+    occurred_at: raw.occurred_at ?? null
+  };
 }
 
 // Lógica de cálculo de semáforo blindada
@@ -131,6 +146,11 @@ function startTelemetryListener() {
       const refNowMs = getReferenceNowMs(data);
       const evaluation = evaluateStatus(data.system, rawTime, refNowMs);
       const hasClockSkew = detectClientClockSkew(rawTime, refNowMs);
+      const normalizedShutdown = normalizeLastShutdown(data.system);
+
+      const systemData = data.system
+        ? { ...data.system, last_shutdown: normalizedShutdown }
+        : { last_shutdown: normalizedShutdown };
 
       return {
         id: docSnap.id,
@@ -140,7 +160,9 @@ function startTelemetryListener() {
         zone: data.zone,
         terminal_id: data.terminal_id,
         timestamp: rawTime,
-        system: data.system,
+        server_timestamp: data.server_timestamp,
+        received_at: data.received_at,
+        system: systemData,
         database: data.database,
         status: evaluation.status,
         isOffline: evaluation.isOffline,
@@ -173,7 +195,7 @@ onMounted(() => {
     }
   });
 
-  // Reevaluación periódica cada minuto para mantener sincronizada la detección de desfase
+  // Reevaluación periódica cada minuto para mantener sincronizada la detección offline y de desfase
   reevalInterval = window.setInterval(() => {
     if (terminals.value.length > 0) {
       const updated = terminals.value.map((t) => {
@@ -288,14 +310,14 @@ const activeFilterLabel = computed(() => {
     <!-- BARRA SUPERIOR FIJA -->
     <header class="fixed top-0 left-0 right-0 w-full pt-[env(safe-area-inset-top)] px-4 sm:px-6 pb-3 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-30 transition-colors duration-200 shadow-sm">
       <div class="flex justify-between items-center pt-2 max-w-7xl mx-auto">
-        <!-- Logo corporativo e Isotipo V1.2.6 -->
+        <!-- Logo corporativo e Isotipo V1.3.0 -->
         <div class="flex items-center gap-3">
           <img src="./assets/madisaLogo.jpg" alt="Logo MADISA" class="w-9 h-9 flex-shrink-0 rounded-full object-cover"/>
           <div>
             <div class="flex items-center gap-2">
               <span class="font-bold text-base sm:text-lg text-slate-900 dark:text-white tracking-tight">MADISA</span>
               <span class="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950 text-[#1976d2] dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/50">
-                v1.2.6
+                v1.3.0
               </span>
             </div>
             <p class="text-[10px] text-slate-500 dark:text-slate-400 font-medium leading-none hidden sm:block">Telemetry Control</p>
@@ -426,7 +448,7 @@ const activeFilterLabel = computed(() => {
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Supervisión en tiempo real de terminales TPV y servidores</p>
         </div>
 
-        <!-- Filtro de delegaciones estilo V1.2.6 (#1976d2) -->
+        <!-- Filtro de delegaciones estilo V1.3.0 (#1976d2) -->
         <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full md:w-auto pb-1">
           <button
             v-for="del in delegations"
@@ -669,6 +691,31 @@ const activeFilterLabel = computed(() => {
             >
               <span class="font-bold">🕒</span>
               <span>Este cliente tiene la hora mal puesta</span>
+            </div>
+
+            <!-- Último motivo de apagado / reinicio registrado en Windows -->
+            <div
+              v-if="selectedTerminalForModal.system?.last_shutdown?.label && selectedTerminalForModal.system.last_shutdown.category !== 'unknown'"
+              class="mt-3 p-3 rounded-xl border text-xs flex items-start justify-between gap-3"
+              :class="selectedTerminalForModal.system.last_shutdown.category === 'power_loss'
+                ? 'bg-amber-50 dark:bg-amber-950/35 border-amber-300 dark:border-amber-800/70 text-amber-900 dark:text-amber-200'
+                : 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/60 text-slate-700 dark:text-slate-300'"
+            >
+              <div class="min-w-0">
+                <div class="font-semibold flex items-center gap-1.5">
+                  <span>{{ selectedTerminalForModal.system.last_shutdown.category === 'power_loss' ? '⚡' : '🔄' }}</span>
+                  <span>Último apagado/reinicio: {{ selectedTerminalForModal.system.last_shutdown.label }}</span>
+                </div>
+                <p v-if="selectedTerminalForModal.system.last_shutdown.detail" class="text-[11px] opacity-80 mt-0.5">
+                  {{ selectedTerminalForModal.system.last_shutdown.detail }}
+                </p>
+              </div>
+              <span
+                v-if="selectedTerminalForModal.system.last_shutdown.occurred_at"
+                class="font-mono text-[10px] opacity-75 shrink-0"
+              >
+                {{ new Date(selectedTerminalForModal.system.last_shutdown.occurred_at).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) }}
+              </span>
             </div>
 
             <!-- Métricas de Hardware y Servicio -->

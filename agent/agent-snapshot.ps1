@@ -20,6 +20,102 @@ function Write-AgentLog ([string]$msg) {
     "[$timestamp] $msg" | Out-File -FilePath $logFile -Append -Encoding UTF8
 }
 
+function Escape-JsonString ([string]$val) {
+    if ($null -eq $val) { return "" }
+    return $val.Replace('\', '\\').Replace('"', '\"').Replace("`r", " ").Replace("`n", " ")
+}
+
+function Get-LastShutdownInfo {
+    $result = [ordered]@{
+        event_id    = $null
+        category    = "unknown"
+        label       = "Sin registro reciente"
+        detail      = ""
+        occurred_at = $null
+    }
+
+    try {
+        # IDs en log System (PS 5.1+):
+        # 41: Kernel-Power (pérdida de energía / apagón brusco)
+        # 6008: Apagado inesperado previo (corte de luz / cuelgue)
+        # 1074: Apagado/reinicio iniciado por usuario, app o actualización
+        # 1076: Motivo tras apagado inesperado
+        # 6006: Apagado limpio del servicio de eventos
+        $events = Get-WinEvent -FilterHashtable @{
+            LogName = 'System'
+            Id      = @(41, 6008, 1074, 1076, 6006)
+        } -MaxEvents 15 -ErrorAction SilentlyContinue
+
+        if (-not $events -or @($events).Count -eq 0) {
+            return $result
+        }
+
+        $targetEvent = @($events) | Where-Object { $_.Id -in @(41, 6008, 1074, 1076) } | Select-Object -First 1
+        if (-not $targetEvent) {
+            $targetEvent = @($events) | Select-Object -First 1
+        }
+
+        $eventId = [int]$targetEvent.Id
+        $result.event_id    = $eventId
+        $result.occurred_at = $targetEvent.TimeCreated.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+        switch ($eventId) {
+            41 {
+                $result.category = "power_loss"
+                $result.label    = "Corte de luz / Apagón brusco"
+                $result.detail   = "Kernel-Power (ID 41): pérdida repentina de alimentación o reinicio brusco."
+            }
+            6008 {
+                $result.category = "power_loss"
+                $result.label    = "Corte de luz / Apagado inesperado"
+                $result.detail   = "Evento 6008: el equipo se apagó de forma inesperada sin cierre limpio."
+            }
+            1074 {
+                # En evento 1074 (User32): [0]=Proceso, [2]=Código motivo, [4]=Acción, [6]=Usuario
+                $procName   = if ($targetEvent.Properties.Count -gt 0) { [string]$targetEvent.Properties[0].Value } else { "" }
+                $reasonCode = if ($targetEvent.Properties.Count -gt 2) { [string]$targetEvent.Properties[2].Value } else { "" }
+                $actionType = if ($targetEvent.Properties.Count -gt 4) { [string]$targetEvent.Properties[4].Value } else { "" }
+                $userName   = if ($targetEvent.Properties.Count -gt 6) { [string]$targetEvent.Properties[6].Value } else { "" }
+
+                $isRestart = ($actionType -match "restart|reinici")
+
+                if ($reasonCode -match "0x80020002|0x80020003|0x80020010" -or $procName -match "TrustedInstaller|TiWorker|wuauclt|UsoClient|MoUsoCoreWorker") {
+                    $result.category = "system_update"
+                    $result.label    = if ($isRestart) { "Reinicio por actualizaciones" } else { "Apagado por actualizaciones" }
+                    $result.detail   = "Mantenimiento o actualizaciones de Windows ($procName)."
+                }
+                elseif ($procName -match "wininit\.exe|explorer\.exe|shutdown\.exe|RuntimeBroker\.exe") {
+                    $result.category = "manual_user"
+                    $result.label    = if ($isRestart) { "Reinicio manual / Botón" } else { "Apagado manual / Botón" }
+                    $result.detail   = if ($userName) { "Iniciado manualmente ($userName)." } else { "Iniciado manualmente desde Windows o botón de encendido." }
+                }
+                else {
+                    $result.category = "software_planned"
+                    $result.label    = if ($isRestart) { "Reinicio programado / App" } else { "Apagado programado / App" }
+                    $result.detail   = "Iniciado por proceso del sistema o aplicación ($procName)."
+                }
+            }
+            1076 {
+                $result.category = "power_loss"
+                $result.label    = "Apagado inesperado confirmado"
+                $result.detail   = "Evento 1076: motivo de apagado inesperado registrado tras el arranque."
+            }
+            6006 {
+                $result.category = "clean_shutdown"
+                $result.label    = "Apagado limpio del sistema"
+                $result.detail   = "Evento 6006: cierre ordenado de servicios."
+            }
+        }
+    }
+    catch {
+        $result.category = "unknown"
+        $result.label    = "No disponible"
+        $result.detail   = "No se pudo consultar el visor de eventos."
+    }
+
+    return $result
+}
+
 # ------------------------------------------------------------------------------
 # 0. Cargar Configuración del Cliente desde config.json
 # ------------------------------------------------------------------------------
@@ -41,7 +137,6 @@ if (Test-Path $configFile) {
         Write-AgentLog "AVISO: Error leyendo config.json, usando parametros por defecto."
     }
 } else {
-    # Si no existe, crear la plantilla inicial automáticamente
     $template = [ordered]@{
         project_id  = $ProjectId
         client_id   = $ClientId
@@ -56,7 +151,7 @@ if (Test-Path $configFile) {
 # ------------------------------------------------------------------------------
 # 1. Rutina de Auto-Actualización Silenciosa e Inmune a Caché
 # ------------------------------------------------------------------------------
-$CurrentVersion  = "1.2.6" # Version local de esta copia
+$CurrentVersion  = "1.3.0"
 $TargetScript    = Join-Path -Path $OutputDir -ChildPath "agent-snapshot.ps1"
 $BaseUrl         = "https://raw.githubusercontent.com/TrOgI10/MadisaTelemetry/main/agent/agent-snapshot.ps1"
 $UpdateScriptUrl = "$BaseUrl`?nocache=$([DateTime]::UtcNow.Ticks)"
@@ -69,24 +164,16 @@ try {
     $wc.Headers.Add("Pragma", "no-cache")
 
     $tempScriptPath = Join-Path -Path $OutputDir -ChildPath "agent-snapshot.tmp"
-    
-    # 1. Descarga el archivo remoto
     $wc.DownloadFile($UpdateScriptUrl, $tempScriptPath)
 
     if (Test-Path $tempScriptPath) {
         $tempContent = Get-Content -Path $tempScriptPath -Raw -Encoding UTF8
-        
-        # Validar que no sea un 404 o texto corrupto
         if ($tempContent -match '\$CurrentVersion\s*=\s*"([^"]+)"') {
             $remoteVersion = $matches[1]
-
             if ($remoteVersion -ne $CurrentVersion) {
                 Write-AgentLog "UPDATE: Nueva version detectada ($remoteVersion vs local $CurrentVersion). Aplicando..."
-
-                # Sobrescribir archivo destino
                 [System.IO.File]::WriteAllText($TargetScript, $tempContent, [System.Text.Encoding]::UTF8)
                 Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
-
                 Write-AgentLog "OK: Script local actualizado exitosamente a la version $remoteVersion."
             } else {
                 Write-AgentLog "CHECK: Version al dia ($CurrentVersion). No requiere actualizacion."
@@ -104,7 +191,7 @@ try {
 # ------------------------------------------------------------------------------
 # 2. Rutina de Auto-Actualización Segura (Descarga a archivo, sin irm | iex)
 # ------------------------------------------------------------------------------
-$CurrentVersion  = "1.2.6"
+$CurrentVersion  = "1.3.0"
 $UpdateScriptUrl = "https://raw.githubusercontent.com/TrOgI10/MadisaTelemetry/refs/heads/main/agent/agent-snapshot.ps1"
 
 try {
@@ -116,18 +203,13 @@ try {
     $wc.DownloadFile($UpdateScriptUrl, $tempScriptPath)
 
     if (Test-Path $tempScriptPath) {
-        # Inspeccionar cabecera del script descargado en disco
         $remoteVersionLine = Get-Content -Path $tempScriptPath | Select-String -Pattern '\$CurrentVersion\s*=\s*"([^"]+)"'
         if ($remoteVersionLine) {
             $remoteVersion = $remoteVersionLine.Matches.Groups[1].Value
-
             if ($remoteVersion -and $remoteVersion -ne $CurrentVersion) {
                 Write-AgentLog "UPDATE: Detectada version $remoteVersion (actual: $CurrentVersion). Reemplazando script..."
-
                 $thisScript = $MyInvocation.MyCommand.Path
                 if (-not $thisScript) { $thisScript = Join-Path -Path $OutputDir -ChildPath "agent-snapshot.ps1" }
-
-                # Reemplazo atómico de archivo
                 Copy-Item -Path $tempScriptPath -Destination $thisScript -Force
                 Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue
                 Write-AgentLog "OK: Script actualizado a version $remoteVersion."
@@ -137,7 +219,6 @@ try {
         }
     }
 } catch {
-    # Falla silenciosamente si el TPV no tiene salida a GitHub en ese momento
 }
 
 # ------------------------------------------------------------------------------
@@ -147,7 +228,6 @@ try {
     $computerName = if ($env:COMPUTERNAME) { $env:COMPUTERNAME } else { "UNKNOWN-PC" }
     $docId = ("{0}_{1}" -f $ClientId, $computerName).ToUpper()
 
-    # CPU y Memoria RAM
     $os = Get-CimInstance -ClassName Win32_OperatingSystem -OperationTimeoutSec 10
     $cpuLoad = (Get-CimInstance -ClassName Win32_Processor -OperationTimeoutSec 10 | Measure-Object -Property LoadPercentage -Average).Average
     if ($null -eq $cpuLoad) { $cpuLoad = 0 }
@@ -157,7 +237,6 @@ try {
     $usedRamGb  = [math]::Round($totalRamGb - $freeRamGb, 2)
     $ramPercent = [math]::Round(($usedRamGb / $totalRamGb) * 100, 2)
 
-    # Almacenamiento Disco C: y Uptime
     $driveC          = Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DeviceID='C:'" -OperationTimeoutSec 10
     $diskTotalGb     = [math]::Round($driveC.Size / 1GB, 2)
     $diskFreeGb      = [math]::Round($driveC.FreeSpace / 1GB, 2)
@@ -177,10 +256,11 @@ try {
 
     $uptimeFormatted = "{0}:{1:D2}:{2:D2}:{3:D2}" -f [int]$uptime.Days, $uptime.Hours, $uptime.Minutes, $uptime.Seconds
 
-    # Estado de SQL Server y Cola de Impresión
     $sqlService = Get-Service -Name "MSSQLSERVER" -ErrorAction SilentlyContinue
     $sqlStatus  = if ($sqlService) { $sqlService.Status.ToString() } else { "NotInstalled" }
     $spoolJobs  = (Get-CimInstance -ClassName Win32_PrintJob -OperationTimeoutSec 10 -ErrorAction SilentlyContinue | Measure-Object).Count
+
+    $lastShutdown = Get-LastShutdownInfo
 
     # 5. IP Privada Local Real e IP Pública
     $localIp = (Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue |
@@ -202,9 +282,6 @@ try {
     }
     if ([string]::IsNullOrWhiteSpace($localIp)) { $localIp = "No disponible" }
 
-    # --------------------------------------------------------------------------
-    # Obtención de IP Pública Robusta (Con fallback y TLS 1.2)
-    # --------------------------------------------------------------------------
     $publicIp = "No disponible"
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
 
@@ -221,13 +298,11 @@ try {
             $wcIp.Headers.Add("Cache-Control", "no-cache")
             
             $res = ($wcIp.DownloadString($endpoint)).Trim()
-            # Validar formato IPv4 con Regex
             if ($res -match '^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$') {
                 $publicIp = $res
                 break
             }
         } catch {
-            # Si falla un servicio, prueba el siguiente de la lista
         }
     }
 
@@ -247,7 +322,7 @@ try {
             ram_mb = $ramMb
         }
 
-        $topRamJsonItems += '{"mapValue":{"fields":{"name":{"stringValue":"' + $pName.Replace('\','\\').Replace('"','\"') + '"},"ram_mb":{"doubleValue":' + $ramMb.ToString([System.Globalization.CultureInfo]::InvariantCulture) + '}}}}'
+        $topRamJsonItems += '{"mapValue":{"fields":{"name":{"stringValue":"' + (Escape-JsonString $pName) + '"},"ram_mb":{"doubleValue":' + $ramMb.ToString([System.Globalization.CultureInfo]::InvariantCulture) + '}}}}'
     }
 
     $rawTopCpu = $allProcesses | Where-Object { $null -ne $_.CPU -and $_.CPU -gt 0 } | Sort-Object -Property CPU -Descending | Select-Object -First 3
@@ -263,10 +338,9 @@ try {
             cpu_seconds = $cpuSec
         }
 
-        $topCpuJsonItems += '{"mapValue":{"fields":{"name":{"stringValue":"' + $pName.Replace('\','\\').Replace('"','\"') + '"},"cpu_seconds":{"doubleValue":' + $cpuSec.ToString([System.Globalization.CultureInfo]::InvariantCulture) + '}}}}'
+        $topCpuJsonItems += '{"mapValue":{"fields":{"name":{"stringValue":"' + (Escape-JsonString $pName) + '"},"cpu_seconds":{"doubleValue":' + $cpuSec.ToString([System.Globalization.CultureInfo]::InvariantCulture) + '}}}}'
     }
 
-    # Guardar snapshot local de diagnóstico
     $localData = [ordered]@{
         id          = $docId
         client_id   = $ClientId
@@ -291,6 +365,7 @@ try {
             uptime_hours        = $uptimeHours
             uptime_human        = $uptimeHuman
             uptime_formatted    = $uptimeFormatted
+            last_shutdown       = $lastShutdown
             top_ram_processes   = $topRamLocal
             top_cpu_processes   = $topCpuLocal
         }
@@ -308,20 +383,46 @@ try {
     $topRamArrayJson = if ($topRamJsonItems.Count -gt 0) { ($topRamJsonItems -join ",") } else { "" }
     $topCpuArrayJson = if ($topCpuJsonItems.Count -gt 0) { ($topCpuJsonItems -join ",") } else { "" }
 
+    $eventIdField = if ($null -ne $lastShutdown.event_id) {
+        '"event_id": { "integerValue": ' + [int]$lastShutdown.event_id + ' },'
+    } else {
+        '"event_id": { "nullValue": null },'
+    }
+
+    $occurredAtField = if ($lastShutdown.occurred_at) {
+        '"occurred_at": { "stringValue": "' + (Escape-JsonString $lastShutdown.occurred_at) + '" }'
+    } else {
+        '"occurred_at": { "nullValue": null }'
+    }
+
+    $lastShutdownFirestoreJson = @"
+{
+  "mapValue": {
+    "fields": {
+      $eventIdField
+      "category": { "stringValue": "$(Escape-JsonString $lastShutdown.category)" },
+      "label": { "stringValue": "$(Escape-JsonString $lastShutdown.label)" },
+      "detail": { "stringValue": "$(Escape-JsonString $lastShutdown.detail)" },
+      $occurredAtField
+    }
+  }
+}
+"@
+
     $firestorePayload = @"
 {
   "fields": {
-    "client_id": { "stringValue": "$ClientId" },
-    "client_name": { "stringValue": "$ClientName" },
-    "delegation": { "stringValue": "$Delegation" },
+    "client_id": { "stringValue": "$(Escape-JsonString $ClientId)" },
+    "client_name": { "stringValue": "$(Escape-JsonString $ClientName)" },
+    "delegation": { "stringValue": "$(Escape-JsonString $Delegation)" },
     "zone": { "integerValue": $Zone },
-    "terminal_id": { "stringValue": "$computerName" },
+    "terminal_id": { "stringValue": "$(Escape-JsonString $computerName)" },
     "timestamp": { "stringValue": "$($localData.timestamp)" },
     "system": {
       "mapValue": {
         "fields": {
-          "ip_private": { "stringValue": "$localIp" },
-          "ip_public": { "stringValue": "$publicIp" },
+          "ip_private": { "stringValue": "$(Escape-JsonString $localIp)" },
+          "ip_public": { "stringValue": "$(Escape-JsonString $publicIp)" },
           "cpu_usage_percent": { "integerValue": $([int]$cpuLoad) },
           "ram_used_gb": { "doubleValue": $($usedRamGb.ToString($ci)) },
           "ram_total_gb": { "doubleValue": $($totalRamGb.ToString($ci)) },
@@ -330,11 +431,12 @@ try {
           "disk_c_free_gb": { "doubleValue": $($diskFreeGb.ToString($ci)) },
           "disk_c_used_gb": { "doubleValue": $($diskUsedGb.ToString($ci)) },
           "disk_c_percent_free": { "doubleValue": $($diskPercentFree.ToString($ci)) },
-          "sql_service_status": { "stringValue": "$sqlStatus" },
+          "sql_service_status": { "stringValue": "$(Escape-JsonString $sqlStatus)" },
           "print_spooler_jobs": { "integerValue": $spoolJobs },
           "uptime_hours": { "doubleValue": $($uptimeHours.ToString($ci)) },
-          "uptime_human": { "stringValue": "$uptimeHuman" },
-          "uptime_formatted": { "stringValue": "$uptimeFormatted" },
+          "uptime_human": { "stringValue": "$(Escape-JsonString $uptimeHuman)" },
+          "uptime_formatted": { "stringValue": "$(Escape-JsonString $uptimeFormatted)" },
+          "last_shutdown": $lastShutdownFirestoreJson,
           "top_ram_processes": {
             "arrayValue": {
               "values": [ $topRamArrayJson ]

@@ -53,3 +53,11 @@ export interface TerminalTelemetry {
   isOffline?: boolean;
   hasClockSkew?: boolean;
 }
+
+export interface LastShutdownInfo {
+  event_id?: number | null;
+  category?: 'power_loss' | 'manual_user' | 'system_update' | 'software_planned' | 'clean_shutdown' | 'unknown';
+  label: string;
+  detail?: string;
+  occurred_at?: string | null;
+}
