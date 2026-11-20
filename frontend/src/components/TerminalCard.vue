@@ -54,28 +54,28 @@ const statusLabel = computed(() => {
   >
     <!-- Dispositivo y Cliente -->
     <div class="min-w-0 flex-1">
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 min-w-0">
         <span class="text-xs font-mono font-bold px-2 py-0.5 rounded bg-white/80 dark:bg-slate-800 text-[#1976d2] dark:text-blue-400 border border-slate-200/80 dark:border-slate-700 shrink-0">
           {{ terminal.terminal_id }}
         </span>
         <span class="text-[11px] text-slate-500 dark:text-slate-400 truncate">
           {{ terminal.client_id }} · {{ terminal.delegation }}
         </span>
+        <span
+          v-if="terminal.hasClockSkew"
+          class="inline-flex items-center justify-center w-5 h-5 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/70 text-amber-600 dark:text-amber-400 shrink-0"
+          title="Este cliente tiene la hora mal puesta"
+          aria-label="Este cliente tiene la hora mal puesta"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </span>
       </div>
 
       <h3 class="font-bold text-slate-900 dark:text-white text-base leading-snug truncate mt-1.5">
         {{ terminal.client_name }}
       </h3>
-    </div>
-
-        <!-- Aviso de desfase horario en la tarjeta -->
-    <div
-      v-if="terminal.hasClockSkew"
-      class="mt-2.5 px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/70 text-amber-800 dark:text-amber-300 text-[11px] font-semibold flex items-center gap-1.5 truncate"
-      title="Este cliente tiene la hora mal puesta"
-    >
-      <span>🕒</span>
-      <span class="truncate">Este cliente tiene la hora mal puesta</span>
     </div>
 
     <!-- Indicador Visual de Estado -->
