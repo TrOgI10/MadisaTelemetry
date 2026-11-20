@@ -31,10 +31,11 @@ const searchQuery = ref<string>('');
 const statusFilter = ref<'all' | 'optimal' | 'attention'>('all');
 const delegations = ['TODAS', 'PALMA', 'MADRID', 'BARCELONA', 'IBIZA'];
 
+const rawDocsCache = ref<any[]>([]);
 const terminals = ref<TerminalTelemetry[]>([]);
 let unsubscribe: Unsubscribe | null = null;
 
-// --- Añadir junto a las variables reactivas en <script setup lang="ts"> ---
+// Detección de desfase de reloj en el PC cliente y reevaluación periódica
 const clockSkewDetected = ref(false);
 let reevalInterval: number | null = null;
 
@@ -50,13 +51,36 @@ function parseTimestampMs(rawTimestamp: any): number | null {
   return null;
 }
 
+// Calcula una referencia de tiempo segura frente a relojes de portátil adelantados
+function getReferenceNowMs(allDocsData: any[]): number {
+  const localNow = Date.now();
+  const timestamps = allDocsData
+    .map((d) => parseTimestampMs(d?.timestamp || d?.last_seen))
+    .filter((ms): ms is number => ms !== null);
+
+  if (timestamps.length === 0) return localNow;
+
+  const latestFleetMs = Math.max(...timestamps);
+  // Si el reloj local está adelantado más de 10 min respecto al último reporte recibido,
+  // usamos latestFleetMs como ancla para evitar falsos OFFLINE masivos por reloj adelantado.
+  if (localNow - latestFleetMs > 10 * 60 * 1000) {
+    return latestFleetMs;
+  }
+
+  return localNow;
+}
+
 // Lógica de cálculo de semáforo blindada
-function evaluateStatus(system: any, rawTimestamp?: any): { status: HealthStatus; isOffline: boolean; lastUpdateMs: number | null } {
+function evaluateStatus(
+  system: any,
+  rawTimestamp?: any,
+  referenceNowMs: number = Date.now()
+): { status: HealthStatus; isOffline: boolean; lastUpdateMs: number | null } {
   const lastUpdateMs = parseTimestampMs(rawTimestamp);
 
   // 1. Regla de desconexión: > 15 minutos desde el último reporte
   if (lastUpdateMs !== null) {
-    const diffMinutes = (Date.now() - lastUpdateMs) / (1000 * 60);
+    const diffMinutes = (referenceNowMs - lastUpdateMs) / (1000 * 60);
 
     if (diffMinutes > 15) {
       return { status: 'red', isOffline: true, lastUpdateMs };
@@ -76,58 +100,53 @@ function evaluateStatus(system: any, rawTimestamp?: any): { status: HealthStatus
   return { status: 'green', isOffline: false, lastUpdateMs };
 }
 
-// Comprueba si el 100% de los equipos parecen Offline por desfase del reloj del portátil cliente
-function checkClientClockSkew(list: TerminalTelemetry[]) {
-  if (list.length < 2) {
-    clockSkewDetected.value = false;
-    return;
-  }
-  const allOffline = list.every(t => t.isOffline);
-  if (!allOffline) {
-    clockSkewDetected.value = false;
-    return;
-  }
-
-  // Si todos están offline pero sus reportes son recientes entre sí (< 20 min de diferencia entre el más nuevo y el más antiguo)
-  const timestamps = list
-    .map(t => parseTimestampMs(t.timestamp))
+// Comprueba si el reloj del portátil cliente va más de 15 min adelantado respecto a los reportes recibidos
+function updateClockSkewBanner(rawDocsData: any[], mappedTerminals: TerminalTelemetry[]) {
+  const localNow = Date.now();
+  const timestamps = rawDocsData
+    .map((d) => parseTimestampMs(d?.timestamp || d?.last_seen))
     .filter((ms): ms is number => ms !== null);
 
-  if (timestamps.length >= 2) {
-    const newest = Math.max(...timestamps);
-    const oldest = Math.min(...timestamps);
-    const spreadMinutes = (newest - oldest) / (1000 * 60);
-    clockSkewDetected.value = spreadMinutes <= 20;
-  } else {
+  if (mappedTerminals.length < 2 || timestamps.length < 2) {
     clockSkewDetected.value = false;
+    return;
   }
+
+  const latestFleetMs = Math.max(...timestamps);
+  clockSkewDetected.value = (localNow - latestFleetMs) > 15 * 60 * 1000;
+}
+
+function processRawDocs(rawDocs: any[]) {
+  const referenceNowMs = getReferenceNowMs(rawDocs);
+
+  const mapped = rawDocs.map((data: any) => {
+    const rawTime = data.timestamp || data.last_seen;
+    const evaluation = evaluateStatus(data.system, rawTime, referenceNowMs);
+
+    return {
+      id: data.id,
+      client_id: data.client_id,
+      client_name: data.client_name,
+      delegation: data.delegation,
+      zone: data.zone,
+      terminal_id: data.terminal_id,
+      timestamp: rawTime,
+      system: data.system,
+      status: evaluation.status,
+      isOffline: evaluation.isOffline
+    } as TerminalTelemetry;
+  });
+
+  terminals.value = mapped;
+  updateClockSkewBanner(rawDocs, mapped);
 }
 
 function startTelemetryListener() {
   const terminalsCol = collection(db, 'terminals');
   unsubscribe = onSnapshot(terminalsCol, (snapshot) => {
-    const mapped = snapshot.docs.map((docSnap) => {
-      const data = docSnap.data();
-      // Soporta tanto timestamp como last_seen por compatibilidad
-      const rawTime = data.timestamp || data.last_seen;
-      const evaluation = evaluateStatus(data.system, rawTime);
-
-      return {
-        id: docSnap.id,
-        client_id: data.client_id,
-        client_name: data.client_name,
-        delegation: data.delegation,
-        zone: data.zone,
-        terminal_id: data.terminal_id,
-        timestamp: rawTime,
-        system: data.system,
-        status: evaluation.status,
-        isOffline: evaluation.isOffline
-      } as TerminalTelemetry;
-    });
-
-    terminals.value = mapped;
-    checkClientClockSkew(mapped);
+    const rawDocs = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    rawDocsCache.value = rawDocs;
+    processRawDocs(rawDocs);
   }, (error) => {
     console.error("Error al escuchar Firestore:", error);
   });
@@ -145,10 +164,19 @@ onMounted(() => {
         unsubscribe();
         unsubscribe = null;
       }
+      rawDocsCache.value = [];
       terminals.value = [];
       selectedTerminalForModal.value = null;
+      clockSkewDetected.value = false;
     }
   });
+
+  // Reevaluar cada 60 segundos por si un TPV deja de emitir sin que lleguen nuevos snapshots
+  reevalInterval = window.setInterval(() => {
+    if (rawDocsCache.value.length > 0) {
+      processRawDocs(rawDocsCache.value);
+    }
+  }, 60 * 1000);
 
   document.addEventListener('visibilitychange', async () => {
     if (document.visibilityState === 'visible') {
@@ -170,6 +198,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (unsubscribe) unsubscribe();
+  if (reevalInterval !== null) clearInterval(reevalInterval);
   document.body.style.overflow = '';
 });
 
@@ -382,16 +411,6 @@ const activeFilterLabel = computed(() => {
           </h1>
           <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Supervisión en tiempo real de terminales TPV y servidores</p>
         </div>
-        <!-- Aviso automático si el reloj del portátil cliente está adelantado/desfasado -->
-        <div 
-          v-if="clockSkewDetected" 
-          class="mt-4 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between gap-3"
-        >
-          <div class="flex items-center gap-2">
-            <span class="font-bold text-sm">🕒 Reloj del equipo desfasado:</span>
-            <span>Todos los terminales figuran como Offline porque la hora o zona horaria de este ordenador está adelantada respecto a la hora real. Activa la sincronización automática de hora en Windows.</span>
-          </div>
-        </div>
 
         <!-- Filtro de delegaciones estilo V1.2.6 (#1976d2) -->
         <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar w-full md:w-auto pb-1">
@@ -408,6 +427,17 @@ const activeFilterLabel = computed(() => {
           >
             {{ del }}
           </button>
+        </div>
+      </div>
+
+      <!-- Aviso automático si el reloj del portátil cliente está adelantado/desfasado -->
+      <div 
+        v-if="clockSkewDetected" 
+        class="mt-4 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between gap-3"
+      >
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-sm">🕒 Reloj del equipo desfasado:</span>
+          <span>Todos los terminales figuran como Offline porque la hora o zona horaria de este ordenador está adelantada respecto a la hora real. Activa la sincronización automática de hora en Windows.</span>
         </div>
       </div>
 
@@ -483,7 +513,7 @@ const activeFilterLabel = computed(() => {
         </button>
       </section>
 
-      <!-- BUSCADOR PRINCIPAL DE CLIENTES (Sin etiquetas ni botones extra que alteren su diseño) -->
+      <!-- BUSCADOR PRINCIPAL DE CLIENTES -->
       <section class="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 sm:p-6 shadow-sm mb-6">
         <label for="client-search" class="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
           Consulta de Equipos por Cliente
