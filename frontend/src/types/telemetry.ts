@@ -40,12 +40,16 @@ export interface TerminalTelemetry {
   id?: string;
   client_id: string;
   client_name: string;
-  delegation: Delegation;
-  zone: number;
+  delegation: string;
+  zone?: string | number;
   terminal_id: string;
-  timestamp: string;
-  system: SystemMetrics;
-  database?: DatabaseMetrics;
-  status: HealthStatus;
+  timestamp?: string | number | any;
+  last_seen?: string | number | any;
+  server_timestamp?: string | number | any;
+  received_at?: string | number | any;
+  system: any;
+  database?: any;
+  status?: HealthStatus;
   isOffline?: boolean;
+  hasClockSkew?: boolean;
 }

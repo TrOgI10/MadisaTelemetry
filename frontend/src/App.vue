@@ -31,13 +31,13 @@ const searchQuery = ref<string>('');
 const statusFilter = ref<'all' | 'optimal' | 'attention'>('all');
 const delegations = ['TODAS', 'PALMA', 'MADRID', 'BARCELONA', 'IBIZA'];
 
-const rawDocsCache = ref<any[]>([]);
 const terminals = ref<TerminalTelemetry[]>([]);
 let unsubscribe: Unsubscribe | null = null;
 
-// Detección de desfase de reloj en el PC cliente y reevaluación periódica
+// --- Variables y funciones de tiempo / desfase horario ---
 const clockSkewDetected = ref(false);
 let reevalInterval: number | null = null;
+const CLOCK_SKEW_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutos
 
 // Normaliza string ISO, número epoch o Firestore Timestamp a milisegundos UTC
 function parseTimestampMs(rawTimestamp: any): number | null {
@@ -51,23 +51,18 @@ function parseTimestampMs(rawTimestamp: any): number | null {
   return null;
 }
 
-// Calcula una referencia de tiempo segura frente a relojes de portátil adelantados
-function getReferenceNowMs(allDocsData: any[]): number {
-  const localNow = Date.now();
-  const timestamps = allDocsData
-    .map((d) => parseTimestampMs(d?.timestamp || d?.last_seen))
-    .filter((ms): ms is number => ms !== null);
+// Prioriza fecha de recepción/servidor si viene en el documento; si no, usa la hora actual
+function getReferenceNowMs(data: any): number {
+  const serverRaw = data?.server_timestamp ?? data?.received_at;
+  const serverMs = parseTimestampMs(serverRaw);
+  return serverMs !== null ? serverMs : Date.now();
+}
 
-  if (timestamps.length === 0) return localNow;
-
-  const latestFleetMs = Math.max(...timestamps);
-  // Si el reloj local está adelantado más de 10 min respecto al último reporte recibido,
-  // usamos latestFleetMs como ancla para evitar falsos OFFLINE masivos por reloj adelantado.
-  if (localNow - latestFleetMs > 10 * 60 * 1000) {
-    return latestFleetMs;
-  }
-
-  return localNow;
+// Detecta si el reporte del cliente tiene desfase horario (> 10 min adelantado o atrasado)
+function detectClientClockSkew(rawTimestamp: any, referenceNowMs: number): boolean {
+  const reportMs = parseTimestampMs(rawTimestamp);
+  if (reportMs === null) return false;
+  return Math.abs(reportMs - referenceNowMs) > CLOCK_SKEW_THRESHOLD_MS;
 }
 
 // Lógica de cálculo de semáforo blindada
@@ -100,53 +95,61 @@ function evaluateStatus(
   return { status: 'green', isOffline: false, lastUpdateMs };
 }
 
-// Comprueba si el reloj del portátil cliente va más de 15 min adelantado respecto a los reportes recibidos
-function updateClockSkewBanner(rawDocsData: any[], mappedTerminals: TerminalTelemetry[]) {
-  const localNow = Date.now();
-  const timestamps = rawDocsData
-    .map((d) => parseTimestampMs(d?.timestamp || d?.last_seen))
-    .filter((ms): ms is number => ms !== null);
-
-  if (mappedTerminals.length < 2 || timestamps.length < 2) {
+// Comprueba si el 100% de los equipos parecen Offline por desfase del reloj del portátil cliente
+function checkClientClockSkew(list: TerminalTelemetry[]) {
+  if (list.length < 2) {
+    clockSkewDetected.value = false;
+    return;
+  }
+  const allOffline = list.every(t => t.isOffline);
+  if (!allOffline) {
     clockSkewDetected.value = false;
     return;
   }
 
-  const latestFleetMs = Math.max(...timestamps);
-  clockSkewDetected.value = (localNow - latestFleetMs) > 15 * 60 * 1000;
-}
+  // Si todos están offline pero sus reportes son recientes entre sí (< 20 min de diferencia entre el más nuevo y el más antiguo)
+  const timestamps = list
+    .map(t => parseTimestampMs(t.timestamp))
+    .filter((ms): ms is number => ms !== null);
 
-function processRawDocs(rawDocs: any[]) {
-  const referenceNowMs = getReferenceNowMs(rawDocs);
-
-  const mapped = rawDocs.map((data: any) => {
-    const rawTime = data.timestamp || data.last_seen;
-    const evaluation = evaluateStatus(data.system, rawTime, referenceNowMs);
-
-    return {
-      id: data.id,
-      client_id: data.client_id,
-      client_name: data.client_name,
-      delegation: data.delegation,
-      zone: data.zone,
-      terminal_id: data.terminal_id,
-      timestamp: rawTime,
-      system: data.system,
-      status: evaluation.status,
-      isOffline: evaluation.isOffline
-    } as TerminalTelemetry;
-  });
-
-  terminals.value = mapped;
-  updateClockSkewBanner(rawDocs, mapped);
+  if (timestamps.length >= 2) {
+    const newest = Math.max(...timestamps);
+    const oldest = Math.min(...timestamps);
+    const spreadMinutes = (newest - oldest) / (1000 * 60);
+    clockSkewDetected.value = spreadMinutes <= 20;
+  } else {
+    clockSkewDetected.value = false;
+  }
 }
 
 function startTelemetryListener() {
   const terminalsCol = collection(db, 'terminals');
   unsubscribe = onSnapshot(terminalsCol, (snapshot) => {
-    const rawDocs = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    rawDocsCache.value = rawDocs;
-    processRawDocs(rawDocs);
+    const mapped = snapshot.docs.map((docSnap) => {
+      const data = docSnap.data();
+      const rawTime = data.timestamp || data.last_seen;
+      const refNowMs = getReferenceNowMs(data);
+      const evaluation = evaluateStatus(data.system, rawTime, refNowMs);
+      const hasClockSkew = detectClientClockSkew(rawTime, refNowMs);
+
+      return {
+        id: docSnap.id,
+        client_id: data.client_id,
+        client_name: data.client_name,
+        delegation: data.delegation,
+        zone: data.zone,
+        terminal_id: data.terminal_id,
+        timestamp: rawTime,
+        system: data.system,
+        database: data.database,
+        status: evaluation.status,
+        isOffline: evaluation.isOffline,
+        hasClockSkew
+      } as TerminalTelemetry;
+    });
+
+    terminals.value = mapped;
+    checkClientClockSkew(mapped);
   }, (error) => {
     console.error("Error al escuchar Firestore:", error);
   });
@@ -164,17 +167,28 @@ onMounted(() => {
         unsubscribe();
         unsubscribe = null;
       }
-      rawDocsCache.value = [];
       terminals.value = [];
       selectedTerminalForModal.value = null;
       clockSkewDetected.value = false;
     }
   });
 
-  // Reevaluar cada 60 segundos por si un TPV deja de emitir sin que lleguen nuevos snapshots
+  // Reevaluación periódica cada minuto para mantener sincronizada la detección de desfase
   reevalInterval = window.setInterval(() => {
-    if (rawDocsCache.value.length > 0) {
-      processRawDocs(rawDocsCache.value);
+    if (terminals.value.length > 0) {
+      const updated = terminals.value.map((t) => {
+        const refNowMs = getReferenceNowMs(t);
+        const evaluation = evaluateStatus(t.system, t.timestamp, refNowMs);
+        const hasClockSkew = detectClientClockSkew(t.timestamp, refNowMs);
+        return {
+          ...t,
+          status: evaluation.status,
+          isOffline: evaluation.isOffline,
+          hasClockSkew
+        };
+      });
+      terminals.value = updated;
+      checkClientClockSkew(updated);
     }
   }, 60 * 1000);
 
@@ -646,6 +660,15 @@ const activeFilterLabel = computed(() => {
               class="mt-4 p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2"
             >
               <span class="font-bold">⚠️ Sin respuesta:</span> El TPV no emite telemetría desde hace más de 15 minutos (apagado o sin conexión a internet).
+            </div>
+
+            <!-- Aviso de desfase horario en el modal -->
+            <div 
+              v-if="selectedTerminalForModal.hasClockSkew" 
+              class="mt-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 text-xs flex items-center gap-2"
+            >
+              <span class="font-bold">🕒</span>
+              <span>Este cliente tiene la hora mal puesta</span>
             </div>
 
             <!-- Métricas de Hardware y Servicio -->

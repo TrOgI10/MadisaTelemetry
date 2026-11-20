@@ -68,6 +68,16 @@ const statusLabel = computed(() => {
       </h3>
     </div>
 
+        <!-- Aviso de desfase horario en la tarjeta -->
+    <div
+      v-if="terminal.hasClockSkew"
+      class="mt-2.5 px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300/80 dark:border-amber-800/70 text-amber-800 dark:text-amber-300 text-[11px] font-semibold flex items-center gap-1.5 truncate"
+      title="Este cliente tiene la hora mal puesta"
+    >
+      <span>🕒</span>
+      <span class="truncate">Este cliente tiene la hora mal puesta</span>
+    </div>
+
     <!-- Indicador Visual de Estado -->
     <div class="flex flex-col items-end shrink-0 gap-1">
       <span
